@@ -1,42 +1,47 @@
 #! /usr/bin/env python3
-"""Provide a Multichat server implementation with various capabilities.
+"""Provide a Confabulator server implementation with various capabilities.
 
 This server demonstrates some possibilities when implementing a chat host
 supporting multiple users, administration controls, named rooms, contacts,
 expression interpreters, asynchronous communications, and account options."""
 
-__author__ = 'Stephen "Zero" Chappell <Noctis.Skytower@gmail.com>'
-__date__ = '11 October 2012'
-__version__ = 1, 0, 0
+__author__ = 'Stephen "Zero" Chappell ' \
+             '<stephen.paul.chappell@atlantis-zero.net>'
+__date__ = '14 December 2017'
+__version__ = 1, 0, 1
+__all__ = [
+    'main',
+    'enum',
+    'BanFilter',
+    'OutsideMenu',
+    'InsideMenu',
+    'Server'
+]
 
-################################################################################
-
-import threading
+import abc
+import inspect
+import json
+import operator
+import os
+import pickle
+import random
 import socket
 import sys
-import inspect
-import pickle
-import os
-import weakref
 import textwrap
+import threading
 import traceback
-import random
-import operator
-import json
-
-################################################################################
+import weakref
 
 # Save source code in a global variable.
 
 with open(sys.argv[0] if __name__ == '__main__' else __file__) as SOURCE:
     SOURCE = tuple(SOURCE.read().split('\n'))
 
-################################################################################
 
 # Module Functions
 
 def main(path):
-    "Run a chat server using path as root for various files."
+    """Run a chat server using path as root for various files."""
     # Load Static Handler Data
     BanFilter.load(path)
     OutsideMenu.load(path)
@@ -48,8 +53,9 @@ def main(path):
     # Wait On Connected Clients
     while True:
         current = threading.current_thread()
-        key = lambda thread: not (thread.daemon or thread is current)
-        threads = tuple(filter(key, threading.enumerate()))
+        # noinspection PyShadowingNames
+        threads = tuple(filter(lambda thread: not (
+            thread.daemon or thread is current), threading.enumerate()))
         if not threads:
             break
         for thread in threads:
@@ -59,28 +65,28 @@ def main(path):
     OutsideMenu.save(path)
     BanFilter.save(path)
 
+
 def enum(names):
-    "Create an enumeration based on the names that are given."
-    names = names.replace(',', ' ').split()
-    space = dict((reversed(pair) for pair in enumerate(names)), __slots__=())
-    return type('enum', (object,), space)()
+    """Create a simple enumeration having similarities to C."""
+    # noinspection PyTypeChecker
+    return type('enum', (), dict(map(reversed, enumerate(
+        names.replace(',', ' ').split())), __slots__=()))()
 
-################################################################################
 
-class Handler:
-
-    "Handler(client) -> Handler instance"
+class Handler(abc.ABC):
+    """Handler(client) -> Handler instance"""
 
     def __init__(self, client):
-        "Initialize handler by saving client to public attribute."
+        """Initialize handler by saving client to public attribute."""
         self.client = client
 
+    @abc.abstractmethod
     def handle(self):
-        "Raise an error for calling this abstract method."
-        raise NotImplementedError()
+        """Raise an error for calling this abstract method."""
+        pass
 
     def command_loop(self, prompt='Command:'):
-        "Handle commands received from the client."
+        """Handle commands received from the client."""
         mute = False
         while True:
             line = self.client.input() if mute else self.client.input(prompt)
@@ -96,7 +102,7 @@ class Handler:
                 return value
 
     def run_command(self, line):
-        "Try running command with arguments based on line."
+        """Try running command with arguments based on line."""
         tokens = line.strip().split()
         if tokens:
             cmd, *args = tokens
@@ -112,18 +118,18 @@ class Handler:
                 return func(args)
 
     def json_help(self):
-        "Send client information on what commands are available."
+        """Send client information on what commands are available."""
         package = {name: self.get_help(name) for name in self.commands}
         self.client.print(json.dumps(package))
         return '__json_help__'
 
     @property
     def commands(self):
-        "Provide a list of commands the server will respond to."
+        """Provide a list of commands the server will respond to."""
         return (name[3:] for name in dir(self) if name.startswith('do_'))
 
     def get_help(self, name):
-        "Return the documentation string of command having name."
+        """Return the documentation string of command having name."""
         try:
             func = getattr(self, 'do_' + name)
         except AttributeError:
@@ -133,17 +139,17 @@ class Handler:
             return 'Command has no help!'
         return doc
 
-    ########################################################################
-
     # These are handler commands.
-    # Help reads documentation strings.
+    # Helps to read documentation strings.
 
-    def do_exit(self, args):
-        "Exit from this area of the server."
+    # noinspection PyUnusedLocal
+    @staticmethod
+    def do_exit(args):
+        """Exit from this area of the server."""
         return EOFError()
 
     def do_help(self, args):
-        "Call help with a command name for more information."
+        """Call help with a command name for more information."""
         if args:
             cmd = 'help' if args[0] == '?' else args[0]
             self.client.print(self.get_help(cmd))
@@ -151,80 +157,77 @@ class Handler:
             self.client.print('Command list:', *self.commands, sep='\n    ')
             self.client.print('Call help with command name for more info.')
 
-    ########################################################################
-
     @classmethod
     def load(cls, directory):
-        "Generically load static variables from directory."
+        """Generically load static variables from directory."""
         for name in os.listdir(directory):
-           parts = name.split('.')
-           if len(parts) == 3:
-               klass, static, dat = parts
-               if klass == cls.__name__ and static.isupper() and dat == 'dat':
-                   path = os.path.join(directory, name)
-                   if os.path.isfile(path):
-                       with open(path, 'rb') as file:
-                           setattr(cls, static, pickle.load(file))
+            parts = name.split('.')
+            if len(parts) == 3:
+                kind, static, dat = parts
+                if kind == cls.__name__ and static.isupper() and dat == 'dat':
+                    path = os.path.join(directory, name)
+                    if os.path.isfile(path):
+                        with open(path, 'rb') as file:
+                            setattr(cls, static, pickle.load(file))
 
     @classmethod
     def save(cls, directory):
-        "Generically save static variables to directory."
+        """Generically save static variables to directory."""
         for name in filter(str.isupper, dir(cls)):
             path = '{}.{}.dat'.format(cls.__name__, name)
             with open(os.path.join(directory, path), 'wb') as file:
                 pickle.dump(getattr(cls, name), file, pickle.HIGHEST_PROTOCOL)
 
-################################################################################
 
 class BanFilter(Handler):
-
-    "BanFilter(client) -> BanFilter instance"
+    """BanFilter(client) -> BanFilter instance"""
 
     BLOCKED = []
     data_lock = threading.Lock()
 
     def __init__(self, client):
-        "Initialize filter with the client to screen."
+        """Initialize filter with the client to screen."""
         super().__init__(client)
         self.passed = False
 
     def handle(self):
-        "Verify if client is allowed to continue to OutsideMenu."
+        """Verify if client is allowed to continue to OutsideMenu."""
         if self.passed:
             self.client.print('Disconnecting ...')
             self.client.close()
             return
-        host, alias, ip = socket.gethostbyaddr(self.client.address[0])
+        try:
+            host, alias, ip = socket.gethostbyaddr(self.client.address[0])
+        except socket.herror:
+            host, alias, ip = self.client.address[0], [], []
         with self.data_lock:
-            if host.lower() in self.BLOCKED:
+            if host.casefold() in self.BLOCKED:
                 self.client.close()
             for name in alias:
-                if name.lower() in self.BLOCKED:
+                if name.casefold() in self.BLOCKED:
                     self.client.close()
-            for addr in ip:
-                if addr in self.BLOCKED:
+            for address in ip:
+                if address in self.BLOCKED:
                     self.client.close()
         self.passed = True
         return OutsideMenu(self.client)
 
-################################################################################
 
 class OutsideMenu(Handler):
-
-    "OutsideMenu(client) -> OutsideMenu instance"
+    """OutsideMenu(client) -> OutsideMenu instance"""
 
     ACCOUNTS = {}
     data_lock = threading.Lock()
 
     @classmethod
     def account_exists(cls, name):
-        "Find out if an account with name exists."
+        """Find out if an account with name exists."""
         with cls.data_lock:
             return name in cls.ACCOUNTS
 
     @staticmethod
     def clean_name_from_channels(name):
-        "Remove all references to name in channels."
+        """Remove all references to name in channels."""
         for channel in InsideMenu.get_channels():
             with channel.data_lock:
                 if name in channel.muted_to_muter:
@@ -240,7 +243,7 @@ class OutsideMenu(Handler):
 
     @classmethod
     def delete_account(cls, name):
-        "Delete the account identified by name."
+        """Delete the account identified by name."""
         with cls.data_lock:
             if name in cls.ACCOUNTS:
                 del cls.ACCOUNTS[name]
@@ -252,7 +255,7 @@ class OutsideMenu(Handler):
 
     @classmethod
     def deliver_message(cls, source, name, text):
-        "Send message to name via source with text if possible."
+        """Send message to name via source with text if possible."""
         with cls.data_lock:
             if name in cls.ACCOUNTS:
                 account = cls.ACCOUNTS[name]
@@ -266,14 +269,14 @@ class OutsideMenu(Handler):
 
     @classmethod
     def is_administrator(cls, name):
-        "Check if account identified by name is an administrator."
+        """Check if account identified by name is an administrator."""
         with cls.data_lock:
             if name in cls.ACCOUNTS:
                 return cls.ACCOUNTS[name].administrator
 
     @classmethod
     def is_online(cls, name):
-        "Check if user identified by name is online."
+        """Check if user identified by name is online."""
         with cls.data_lock:
             if name in cls.ACCOUNTS:
                 return cls.ACCOUNTS[name].online
@@ -281,38 +284,36 @@ class OutsideMenu(Handler):
                 return False
 
     def handle(self):
-        "Print banner before entering the command loop."
+        """Print banner before entering the command loop."""
         self.print_banner()
         return self.command_loop()
 
     def print_banner(self):
-        "Show banner to the client."
-##        self.client.print('''\
-##===================================
-##Welcome to Multichat
-##Python Edition 1.0
-##===================================''')
+        """Show banner to the client."""
+        #         self.client.print('''\
+        # ===================================
+        # Welcome to Confabulator
+        # Python Edition 1.0
+        # ===================================''')
         self.client.print('''\
 /----------------------------\\
 |                            |
-|    Welcome to Multichat    |
+|    Welcome to Confabulator    |
 |   ======================   |
 |     Python Edition 1.0     |
 |                            |
 \\----------------------------/''')
 
-    ########################################################################
-
     # These are additional commands this handler recognizes.
 
     def do_login(self, args):
-        "Login to the server to access account."
+        """Login to the server to access account."""
         name = args[0] if len(args) > 0 else self.client.input('Username:')
         word = args[1] if len(args) > 1 else self.client.input('Password:')
         cls = type(self)
         with self.data_lock:
             if name in cls.ACCOUNTS and \
-               word == cls.ACCOUNTS[name].password:
+                            word == cls.ACCOUNTS[name].password:
                 account = cls.ACCOUNTS[name]
                 with account.data_lock:
                     if account.online:
@@ -322,17 +323,17 @@ class OutsideMenu(Handler):
         self.client.print('Authentication failed!')
 
     def do_open_source(self, args):
-        "Display the entire source code for this program."
+        """Display the entire source code for this program."""
         if args and args[0] == 'show':
             show = True
         else:
-            show = self.client.input('Are you sure?') in ('yes', 'true', '1')
+            show = self.client.input('Are you sure?') in {'yes', 'true', '1'}
         if show:
             for line in SOURCE:
                 self.client.print(line)
 
     def do_register(self, args):
-        "Register for an account using this command."
+        """Register for an account using this command."""
         if not self.check_terms_of_service():
             return EOFError()
         name = args[0] if args else self.client.input('Username:')
@@ -345,52 +346,48 @@ class OutsideMenu(Handler):
                 self.client.print('Account already exists!')
                 return
             account = cls.ACCOUNTS[name] = Account(not bool(cls.ACCOUNTS))
-        try:
-            word = args[1] if len(args) > 1 else self.client.input('Password:')
-            assert len(word.split()) == 1
-        except:
-            with self.data_lock:
-                del cls.ACCOUNTS[name]
-            self.client.print('Password may not have whitespace!')
-        else:
+        word = args[1] if len(args) > 1 else self.client.input('Password:')
+        if len(word.split()) == 1:
             with account.data_lock:
                 account.password = word
                 return self.login_account(account, name)
-
-    ########################################################################
+        else:
+            with self.data_lock:
+                del cls.ACCOUNTS[name]
+            self.client.print('Password may not have whitespace!')
 
     def check_terms_of_service(self):
-        "Find out if client agrees to these terms of service."
-##        self.client.print('''\
-##===================================
-##TERMS OF SERVICE
-##
-##By registering with this service,
-##you agree to be bound by these
-##principle requirements until death
-##or the end of the world:
-##
-##1. This service is being provided
-##to you for free and must remain
-##free for these terms to continue.
-##
-##2. Administrators should be held
-##faultless in all they do except
-##promoting falsehood and deception.
-##
-##3. The account given you will
-##remain the property of the issuer
-##and may be removed without warning.
-##
-##4. You give up all legal rights,
-##privacy of data, and demands for
-##fairness while using this system.
-##
-##5. Your terms of service will
-##remain in effect if you lose
-##possession over an account you
-##received.
-##===================================''')
+        """Find out if client agrees to these terms of service."""
+        #         self.client.print('''\
+        # ===================================
+        # TERMS OF SERVICE
+        #
+        # By registering with this service,
+        # you agree to be bound by these
+        # principle requirements until death
+        # or the end of the world:
+        #
+        # 1. This service is being provided
+        # to you for free and must remain
+        # free for these terms to continue.
+        #
+        # 2. Administrators should be held
+        # faultless in all they do except
+        # promoting falsehood and deception.
+        #
+        # 3. The account given you will
+        # remain the property of the issuer
+        # and may be removed without warning.
+        #
+        # 4. You give up all legal rights,
+        # privacy of data, and demands for
+        # fairness while using this system.
+        #
+        # 5. Your terms of service will
+        # remain in effect if you lose
+        # possession over an account you
+        # received.
+        # ===================================''')
         self.client.print('''\
 /----------------------------\\
 |      TERMS OF SERVICE      |
@@ -426,22 +423,20 @@ class OutsideMenu(Handler):
 |  you lose possession over  |
 |  an account you received.  |
 \\----------------------------/''')
-        return self.client.input('Do you agree?') in ('yes', 'true', '1')
+        return self.client.input('Do you agree?') in {'yes', 'true', '1'}
 
     def login_account(self, account, name):
-        "Complete the action of logging the client into his/her account."
+        """Complete the action of logging the client into his/her account."""
         account.online = True
         self.client.name = name
         self.client.account = account
         account.client = weakref.ref(self.client, account.cleanup)
         return InsideMenu(self.client)
 
-################################################################################
 
 class InsideMenu(Handler):
+    """InsideMenu(client) -> InsideMenu instance"""
 
-    "InsideMenu(client) -> InsideMenu instance"
-    
     MAX_FORGIVENESS = 2
 
     data_lock = threading.Lock()
@@ -450,13 +445,13 @@ class InsideMenu(Handler):
 
     @classmethod
     def channel_exists(cls, name):
-        "Find out if channel identified by name exists."
+        """Find out if channel identified by name exists."""
         with cls.data_lock:
             return name in cls.CHANNEL_NAMES
 
     @classmethod
     def delete_channel(cls, name):
-        "Delete channel name from registry."
+        """Delete channel name from registry."""
         with cls.data_lock:
             if name in cls.CHANNEL_NAMES:
                 # The file cannot be deleted, so leave its history alive.
@@ -467,26 +462,26 @@ class InsideMenu(Handler):
 
     @classmethod
     def get_channels(cls):
-        "Get a list of real channel (server) objects."
+        """Get a list of real channel (server) objects."""
         with cls.data_lock:
             names = cls.CHANNEL_NAMES.values()
         channels = []
+        sentinel = object()
         for index in names:
-            try:
-                channels.append(getattr(cls, 'CHANNEL_' + str(index)))
-            except:
-                pass
+            channel = getattr(cls, f'CHANNEL_{index}', sentinel)
+            if channel is not sentinel:
+                channels.append(channel)
         return channels
 
     @classmethod
     def get_channel_names(cls):
-        "Get a list of the channel names."
+        """Get a list of the channel names."""
         with cls.data_lock:
             return tuple(cls.CHANNEL_NAMES.keys())
 
     @classmethod
     def rename_channel(cls, old_name, new_name):
-        "Change channel's name from old_name to new_name."
+        """Change channel's name from old_name to new_name."""
         with cls.data_lock:
             if old_name in cls.CHANNEL_NAMES:
                 if new_name in cls.CHANNEL_NAMES:
@@ -497,7 +492,7 @@ class InsideMenu(Handler):
                 return True
 
     def handle(self):
-        "Handle commands from the client for the inside menu."
+        """Handle commands from the client for the inside menu."""
         self.print_status()
         handler = self.command_loop()
         if handler is None:
@@ -506,14 +501,15 @@ class InsideMenu(Handler):
                 del self.client.account
                 del self.client.name
         return handler
-        
+
     def print_status(self):
-        "Show a status message to those just entering the inside menu."
+        """Show a status message to those just entering the inside menu."""
         if self.client.account.administrator:
             self.client.print('Welcome, administrator!')
-        key = lambda message: message.new
         with self.client.account.data_lock:
-            new = sum(map(key, self.client.account.messages))
+            new = sum(map(
+                lambda message: message.new, self.client.account.messages
+            ))
             contacts = list(self.client.account.contacts)
         args = new, ('s', '')[new == 1]
         self.client.print('You have {} new message{}.'.format(*args))
@@ -529,12 +525,11 @@ class InsideMenu(Handler):
         args = online, total, ('s', '')[total == 1], ('are', 'is')[online == 1]
         self.client.print('{} of your {} friend{} {} online.'.format(*args))
 
-    ########################################################################
-
     # These are additional commands this handler recognizes.
 
+    # noinspection PyUnusedLocal
     def do_admin(self, args):
-        "Access the administration console (if you are an administrator)."
+        """Access the administration console (if you are an administrator)."""
         if not self.client.account.administrator:
             cls = type(self)
             if self.client.account.forgiven >= cls.MAX_FORGIVENESS:
@@ -552,7 +547,7 @@ class InsideMenu(Handler):
         return AdminConsole(self.client)
 
     def do_channel(self, args):
-        "Allows you create and connect to message channels."
+        """Allows you create and connect to message channels."""
         name = args[0] if args else self.client.input('Channel to open?')
         if len(args) > 1 or len(name.split()) > 1:
             self.client.print('Channel name may not have whitespace!')
@@ -573,12 +568,13 @@ class InsideMenu(Handler):
                 return channel.connect(self.client)
         self.client.print('Channel name may not be empty.')
 
+    # noinspection PyUnusedLocal
     def do_contacts(self, args):
-        "Opens up your contacts list and allows you to edit it."
+        """Opens up your contacts list and allows you to edit it."""
         return ContactManager(self.client)
 
     def do_eval(self, args):
-        "Proof of concept: this is a math expression evaluator."
+        """Proof of concept: this is a math expression evaluator."""
         version = args[0] if args else self.client.input('Version?')
         if version == 'old':
             return MathExpressionEvaluator(self.client)
@@ -586,22 +582,22 @@ class InsideMenu(Handler):
             return MathEvaluator2(self.client)
         self.client.print('Try old or new.')
 
+    # noinspection PyUnusedLocal
     def do_messages(self, args):
-        "Opens up your account's inbox to read and send messages."
+        """Opens up your account's inbox to read and send messages."""
         return MessageManager(self.client)
 
+    # noinspection PyUnusedLocal
     def do_options(self, args):
-        "You can change some your settings with this command."
+        """You can change some your settings with this command."""
         return AccountOptions(self.client)
 
-################################################################################
 
 class Server(threading.Thread):
-
-    "Server(host, port) -> Server instance"
+    """Server(host, port) -> Server instance"""
 
     def __init__(self, host, port):
-        "Initialize variables for creating server thread."
+        """Initialize variables for creating server thread."""
         super().__init__()
         self.clients = []
         self.loop = True
@@ -610,7 +606,7 @@ class Server(threading.Thread):
         self.data_lock = threading.Lock()
 
     def run(self):
-        "Create and run a server loop for connecting clients."
+        """Create and run a server loop for connecting clients."""
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.bind((self.host, self.port))
         server.listen(5)
@@ -624,30 +620,28 @@ class Server(threading.Thread):
                     Stack(BanFilter(client)).start()
         server.close()
 
-################################################################################
 
 class Client:
+    """Client(socket, address) -> Client instance"""
 
-    "Client(socket, address) -> Client instance"
-
-    RECV_SIZE = 1 << 12
+    RECEIVE_SIZE = 1 << 12
     BUFF_SIZE = 1 << 16
     SEPARATOR = b'\r\n'
 
-    def __init__(self, socket, address):
-        "Initialize variables that make up a client instance."
+    def __init__(self, connection, address):
+        """Initialize variables that make up a client instance."""
         self.closed = False
-        self.socket = socket
+        self.socket = connection
         self.address = address
         self.buffer = bytes()
 
-    def recv(self):
-        "Return a line having a separator at its end."
+    def receive(self):
+        """Return a line having a separator at its end."""
         if self.closed:
             sys.exit()
         while self.SEPARATOR not in self.buffer:
             try:
-                self.buffer += self.socket.recv(self.RECV_SIZE)
+                self.buffer += self.socket.recv(self.RECEIVE_SIZE)
             except socket.error:
                 self.close()
             else:
@@ -658,7 +652,7 @@ class Client:
         return text
 
     def send(self, text):
-        "Normalize and encode text before sending all data."
+        """Normalize and encode text before sending all data."""
         if self.closed:
             sys.exit()
         for index in range(len(self.SEPARATOR), 0, -1):
@@ -666,7 +660,7 @@ class Client:
         self.socket.sendall(text.replace(self.SEPARATOR[-1:], self.SEPARATOR))
 
     def close(self, suppress_exit=False):
-        "Properly close socket and optionally signal end-of-stream."
+        """Properly close socket and optionally signal end-of-stream."""
         if self.closed:
             sys.exit()
         self.closed = True
@@ -676,30 +670,28 @@ class Client:
             sys.exit()
 
     def input(self, *prompt):
-        "Return decoded line without separator and optionally print prompt."
+        """Print prompt if given and return the decoded line sans separator."""
         if prompt:
             assert len(prompt) == 1, 'One argument at most allowed!'
             self.print(*prompt)
-        return self.recv()[:-len(self.SEPARATOR)].decode()
+        return self.receive()[:-len(self.SEPARATOR)].decode()
 
     def print(self, *value, sep=' ', end='\n'):
-        "Format arguments and send resulting string to client."
+        """Format arguments and send resulting string to client."""
         self.send('{}{}'.format(sep.join(map(str, value)), end).encode())
 
-################################################################################
 
 class Stack(threading.Thread):
-
-    "Stack(handler) -> Stack instance"
+    """Stack(handler) -> Stack instance"""
 
     def __init__(self, handler):
-        "Initialize stack with client handler."
+        """Initialize stack with client handler."""
         super().__init__()
         self.root = handler
         self.stack = [handler]
 
     def run(self):
-        "Execute dedicated thread for processing client handlers."
+        """Execute dedicated thread for processing client handlers."""
         client = self.root.client
         try:
             while self.stack:
@@ -708,6 +700,7 @@ class Stack(threading.Thread):
                 except SystemExit:
                     raise
                 except Exception as error:
+                    # noinspection PyPep8,PyBroadException
                     try:
                         client.print('X' * 70)
                         client.print('Please report this error ASAP!')
@@ -724,6 +717,7 @@ class Stack(threading.Thread):
         except SystemExit:
             pass
         finally:
+            # noinspection PyPep8,PyBroadException
             try:
                 with client.server.data_lock:
                     client.server.clients.remove(client)
@@ -731,14 +725,12 @@ class Stack(threading.Thread):
             except:
                 pass
 
-################################################################################
 
 class Account:
-
-    "Account(administrator) -> Account instance"
+    """Account(administrator) -> Account instance"""
 
     def __init__(self, administrator):
-        "Initialize Account with various variables it requires."
+        """Initialize Account with various variables it requires."""
         self.administrator = administrator
         self.data_lock = threading.Lock()
         self.online = False
@@ -746,9 +738,10 @@ class Account:
         self.contacts = []
         self.messages = []
         self.forgiven = 0
+        self.client = lambda: None
 
     def __getstate__(self):
-        "Return state of account for pickling purposes."
+        """Return state of account for pickling purposes."""
         state = self.__dict__.copy()
         del state['data_lock']
         del state['online']
@@ -757,13 +750,13 @@ class Account:
         return state
 
     def __setstate__(self, state):
-        "Set the state of this instance while unpickling."
+        """Set the state of this instance while unpickling."""
         self.__dict__.update(state)
         self.data_lock = threading.Lock()
         self.online = False
 
     def add_contact(self, name):
-        "Try to add contact name to contact list for this account."
+        """Try to add contact name to contact list for this account."""
         with self.data_lock:
             assert name not in self.contacts
             if OutsideMenu.account_exists(name):
@@ -772,19 +765,21 @@ class Account:
             return False
 
     def broadcast(self, message):
-        "If there is a client for this account, display message."
+        """If there is a client for this account, display message."""
         with self.data_lock:
             if self.online:
+                # noinspection PyNoneFunctionAssignment
                 client = self.client()
                 if client is not None:
                     client.print(message)
 
-    def cleanup(self, client):
-        "Remove the client associated with this account."
+    # noinspection PyUnusedLocal
+    def cleanup(self, weak_reference):
+        """Remove the client associated with this account."""
         del self.client
 
     def delete_message(self, data):
-        "Remove the given message(s) from this account."
+        """Remove the given message(s) from this account."""
         if isinstance(data, (list, tuple)):
             for message in data:
                 self.delete_message(message)
@@ -796,43 +791,43 @@ class Account:
             raise TypeError('Data type not expected!')
 
     def force_disconnect(self):
-        "If there is a client for this account, disconnect it."
+        """If there is a client for this account, disconnect it."""
         with self.data_lock:
             if self.online:
+                # noinspection PyNoneFunctionAssignment
                 client = self.client()
                 if client is not None:
                     client.close(True)
 
-    def prune_by_source(self, source, messages):
-        "Remove messages that do not match the required source."
-        if source is None or not messages:
-            return messages
-        key = lambda message: message.source == source
-        return tuple(filter(key, messages))
+    @staticmethod
+    def prune_by_source(source, messages):
+        """Remove messages that do not match the required source."""
+        return messages if source is None or not messages else tuple(filter(
+            lambda message: message.source == source, messages
+        ))
 
-    def prune_by_status(self, status, messages):
-        "Remove messages that do not match the required status."
+    @staticmethod
+    def prune_by_status(status, messages):
+        """Remove messages that do not match the required status."""
         if status is None or not messages:
             return messages
-        assert status in ('read', 'unread'), 'Status is not valid!'
-        if status == 'read':
-            key = lambda message: not message.new
-        else:
-            key = lambda message: message.new
-        return tuple(filter(key, messages))
+        assert status in {'read', 'unread'}, 'Status is not valid!'
+        return tuple(filter(
+            lambda message: message.new == (status == 'unread'), messages
+        ))
 
     def purge_contacts(self):
-        "Delete all contact information from this account."
+        """Delete all contact information from this account."""
         with self.data_lock:
             self.contacts = []
 
     def purge_messages(self):
-        "Delete all messages stored on this account."
+        """Delete all messages stored on this account."""
         with self.data_lock:
             self.messages = []
 
     def remove_contact(self, name):
-        "Remove contact name from contact list on this account."
+        """Remove contact name from contact list on this account."""
         with self.data_lock:
             if name in self.contacts:
                 self.contacts.remove(name)
@@ -840,14 +835,14 @@ class Account:
             return False
 
     def show_contacts(self, client, status):
-        "Print account contact list to given client."
+        """Print account contact list to given client."""
         with self.data_lock:
             contacts = list(self.contacts)
         if contacts:
             if status:
                 for index, name in enumerate(contacts):
-                    statext = ('FF', 'N')[OutsideMenu.is_online(name)]
-                    args = index + 1, name, statext
+                    filler = ('FF', 'N')[OutsideMenu.is_online(name)]
+                    args = index + 1, name, filler
                     client.print('({}) {} [O{}line]'.format(*args))
             else:
                 for index, name in enumerate(contacts):
@@ -858,17 +853,17 @@ class Account:
 
     def show_message_summary(self, client, status, length, *,
                              filter_status=None, filter_source=None):
-        "Print a formatted summary of the messages on this account."
+        """Print a formatted summary of the messages on this account."""
         with self.data_lock:
             messages = list(self.messages)
         messages = self.prune_by_status(filter_status, messages)
         messages = self.prune_by_source(filter_source, messages)
         if messages:
-            statext = ''
+            filler = ''
             for index, data in enumerate(messages):
                 if status:
-                    statext = (' [read]', ' [UNread]')[data.new]
-                args = index + 1, data.source, statext
+                    filler = (' [read]', ' [Unread]')[data.new]
+                args = index + 1, data.source, filler
                 client.print('Message {} from {}{}:'.format(*args))
                 text = data.message.replace('\n', ' ')
                 if len(text) > length:
@@ -879,25 +874,21 @@ class Account:
             client.print('There are no messages.')
         return messages
 
-################################################################################
 
 class AdminConsole(Handler):
-
-    "AdminConsole(client) -> AdminConsole instance"
+    """AdminConsole(client) -> AdminConsole instance"""
 
     shutdown = enum('server, users, admin, all')
 
     def handle(self):
-        "Show client status of action and run command loop."
+        """Show client status of action and run command loop."""
         self.client.print('Opening admin console ...')
         return self.command_loop()
-
-    ########################################################################
 
     # These are additional commands this handler recognizes.
 
     def do_account(self, args):
-        "Access all account related controls."
+        """Access all account related controls."""
         if not args:
             self.client.print('Try view, remove, or edit.')
             return
@@ -912,7 +903,7 @@ class AdminConsole(Handler):
             self.client.print('Try view, remove, or edit.')
 
     def do_ban(self, args):
-        "Access all IP ban filter controls."
+        """Access all IP ban filter controls."""
         if not args:
             self.client.print('Try view, add, or remove.')
             return
@@ -926,8 +917,9 @@ class AdminConsole(Handler):
         else:
             self.client.print('Try view, add, or remove.')
 
+    # noinspection PyUnusedLocal
     def do_channels(self, args):
-        "View a list of all current channels."
+        """View a list of all current channels."""
         names = InsideMenu.get_channel_names()
         if names:
             s = len(names) == 1 and ' ' or 's '
@@ -938,7 +930,7 @@ class AdminConsole(Handler):
             self.client.print('There are no channels at this time.')
 
     def do_shutdown(self, args):
-        "Arrange for the server to shutdown and save its data."
+        """Arrange for the server to shutdown and save its data."""
         if not args:
             self.client.print('Try server, users, admin, or all.')
             return
@@ -952,10 +944,8 @@ class AdminConsole(Handler):
         else:
             self.client.print('Try server, users, admin, or all.')
 
-    ########################################################################
-
     def account_edit(self, args):
-        "Return an AccountEditor for the selected account."
+        """Return an AccountEditor for the selected account."""
         if args:
             name = args[0]
         else:
@@ -973,7 +963,7 @@ class AdminConsole(Handler):
                 return AccountEditor(self.client, name, account)
 
     def account_remove(self, args):
-        "Remove account specified by client."
+        """Remove account specified by client."""
         if args:
             name = args[0]
             if name == self.client.name:
@@ -990,7 +980,7 @@ class AdminConsole(Handler):
             self.client.print('Account has been removed.')
 
     def account_view(self, account_list):
-        "Print formatted list of accounts."
+        """Print formatted list of accounts."""
         if account_list is None:
             with OutsideMenu.data_lock:
                 account_list = list(OutsideMenu.ACCOUNTS.keys())
@@ -998,58 +988,61 @@ class AdminConsole(Handler):
             self.client.print('({}) {}'.format(index + 1, address))
 
     def ban_add(self, args):
-        "Add an address to the list of those banned."
-        addr = args[0] if args else self.client.input('Address:')
-        if addr:
+        """Add an address to the list of those banned."""
+        address = args[0] if args else self.client.input('Address:')
+        if address:
+            address = address.casefold()
             with BanFilter.data_lock:
-                if addr in BanFilter.BLOCKED:
+                if address in BanFilter.BLOCKED:
                     self.client.print('Address in already in ban list.')
                 else:
-                    BanFilter.BLOCKED.append(addr)
+                    BanFilter.BLOCKED.append(address)
                     self.client.print('Address has been successfully added.')
         else:
             self.client.print('Empty address may not be added.')
 
     def ban_remove(self, args):
-        "Remove an address from the list of those banned."
+        """Remove an address from the list of those banned."""
         if args:
+            address = args[0].casefold()
             with BanFilter.data_lock:
-                if args[0] in BanFilter.BLOCKED:
-                    BanFilter.BLOCKED.remove(args[0])
+                if address in BanFilter.BLOCKED:
+                    BanFilter.BLOCKED.remove(address)
                 else:
                     self.client.print('Address not found.')
                     return
         else:
             with BanFilter.data_lock:
-                addr_list = list(BanFilter.BLOCKED)
-            self.ban_view(addr_list)
-            if addr_list:
+                address_list = list(BanFilter.BLOCKED)
+            self.ban_view(address_list)
+            if address_list:
+                # noinspection PyPep8,PyBroadException
                 try:
                     index = int(self.client.input('Item number?')) - 1
-                    assert 0 <= index < len(addr_list)
+                    assert 0 <= index < len(address_list)
                 except:
                     self.client.print('You must enter a valid number.')
                     return
                 else:
-                    addr = addr_list[index]
+                    address = address_list[index]
                     with BanFilter.data_lock:
-                        while addr in BanFilter.BLOCKED:
-                            BanFilter.BLOCKED.remove(addr)
+                        while address in BanFilter.BLOCKED:
+                            BanFilter.BLOCKED.remove(address)
         self.client.print('Address has been removed.')
 
-    def ban_view(self, addr_list):
-        "View list of addresses that are banned."
-        if addr_list is None:
+    def ban_view(self, address_list):
+        """View list of addresses that are banned."""
+        if address_list is None:
             with BanFilter.data_lock:
-                addr_list = list(BanFilter.BLOCKED)
-        if addr_list:
-            for index, address in enumerate(addr_list):
+                address_list = list(BanFilter.BLOCKED)
+        if address_list:
+            for index, address in enumerate(address_list):
                 self.client.print('({}) {}'.format(index + 1, address))
         else:
             self.client.print('No one is in the ban list.')
 
     def disconnect_accounts(self, message, level):
-        "Send message to matching accounts and disconnect them."
+        """Send message to matching accounts and disconnect them."""
         with OutsideMenu.data_lock:
             accounts = list(OutsideMenu.ACCOUNTS.values())
         for account in accounts:
@@ -1062,7 +1055,7 @@ class AdminConsole(Handler):
             self.client.close()
 
     def disconnect_and_remove(self, name):
-        "Force account name to disconnect and then delete."
+        """Force account name to disconnect and then delete."""
         with OutsideMenu.data_lock:
             if name in OutsideMenu.ACCOUNTS:
                 OutsideMenu.ACCOUNTS[name].force_disconnect()
@@ -1073,7 +1066,7 @@ class AdminConsole(Handler):
         return True
 
     def disconnect_clients(self, message, client_array):
-        "Send message to client and disconnect them."
+        """Send message to client and disconnect them."""
         count = 0
         for client in client_array:
             if not hasattr(client, 'name'):
@@ -1084,13 +1077,14 @@ class AdminConsole(Handler):
         self.client.print('{} sleeper{} disconnected.'.format(*args))
 
     def get_account_name(self):
-        "Display accounts and get name for one of them."
+        """Display accounts and get name for one of them."""
         with OutsideMenu.data_lock:
             names = OutsideMenu.ACCOUNTS.keys()
             names = filter(lambda name: name != self.client.name, names)
             account_list = list(names)
         if account_list:
             self.account_view(account_list)
+            # noinspection PyPep8,PyBroadException
             try:
                 index = int(self.client.input('Account number?')) - 1
                 assert 0 <= index < len(account_list)
@@ -1102,12 +1096,13 @@ class AdminConsole(Handler):
             self.client.print('There are no other accounts.')
 
     def shutdown_server(self, message):
-        "Shutdown server to disconnect clients and save static data."
+        """Shutdown server to disconnect clients and save static data."""
         server = self.client.server
         with server.data_lock:
             if server.loop:
                 server.loop = False
-                socket.create_connection(('localhost', self.client.server.port))
+                socket.create_connection(
+                    ('localhost', self.client.server.port))
                 self.client.print('Server has been shutdown.')
                 client_array = tuple(server.clients)
             else:
@@ -1116,29 +1111,25 @@ class AdminConsole(Handler):
         if client_array is not None:
             self.disconnect_clients(message, client_array)
 
-################################################################################
 
 class AccountEditor(Handler):
-
-    "AccountEditor(client, name, account) -> AccountEditor instance"
+    """AccountEditor(client, name, account) -> AccountEditor instance"""
 
     def __init__(self, client, name, account):
-        "Initialize the editor with information on the account."
+        """Initialize the editor with information on the account."""
         super().__init__(client)
         self.name = name
         self.account = account
 
     def handle(self):
-        "Handle all instructions from the client."
+        """Handle all instructions from the client."""
         self.client.print('Opening account editor ...')
         return self.command_loop()
-
-    ########################################################################
 
     # These are additional commands this handler recognizes.
 
     def do_edit(self, args):
-        "Change various attributes of the account."
+        """Change various attributes of the account."""
         attr = args[0] if args else self.client.input('What?')
         account = self.account
         if attr == 'admin':
@@ -1155,7 +1146,7 @@ class AccountEditor(Handler):
             if len(args) > 1 and args[1] == 'reset':
                 reset = True
             else:
-                reset = self.client.input('Reset?') in ('yes', 'true', '1')
+                reset = self.client.input('Reset?') in {'yes', 'true', '1'}
             if reset:
                 with account.data_lock:
                     account.forgiven = 0
@@ -1163,8 +1154,9 @@ class AccountEditor(Handler):
         else:
             self.client.print('Try admin, password, or forgiven.')
 
+    # noinspection PyUnusedLocal
     def do_info(self, args):
-        "Show information about the current account."
+        """Show information about the current account."""
         self.client.print('About account "{}":'.format(self.name))
         account = self.account
         with account.data_lock:
@@ -1174,14 +1166,15 @@ class AccountEditor(Handler):
             self.client.print('Messages =', len(account.messages))
             self.client.print('Forgiven =', account.forgiven)
 
+    # noinspection PyUnusedLocal
     def do_password(self, args):
-        "Show the password on the account."
+        """Show the password on the account."""
         self.client.print('Username:', repr(self.name))
         with self.account.data_lock:
             self.client.print('Password:', repr(self.account.password))
 
     def do_read(self, args):
-        "Show account's contact list or read message summaries."
+        """Show account's contact list or read message summaries."""
         attr = args[0] if args else self.client.input('Contacts or messages?')
         account = self.account
         if attr == 'contacts':
@@ -1193,17 +1186,16 @@ class AccountEditor(Handler):
         else:
             self.client.print('Try contacts or messages.')
 
-################################################################################
 
 class ChannelServer(Handler):
-
-    "ChannelServer(channel_name, owner) -> ChannelServer instance"
+    """ChannelServer(channel_name, owner) -> ChannelServer instance"""
 
     state = enum('start, setup, ready, reset, final')
     builtin_buffer_limit = 10000
 
+    # noinspection PyMissingConstructor
     def __init__(self, channel_name, owner):
-        "Initialize the ChannelServer with information about the channel."
+        """Initialize the ChannelServer with information about the channel."""
         self.channel_name = channel_name
         self.owner = owner
         self.password = ''
@@ -1220,7 +1212,7 @@ class ChannelServer(Handler):
         self.admin_name = ''
 
     def __getstate__(self):
-        "Get the state of the channel for saving and pickling."
+        """Get the state of the channel for saving and pickling."""
         state = self.__dict__.copy()
         del state['data_lock']
         del state['admin_lock']
@@ -1228,7 +1220,7 @@ class ChannelServer(Handler):
         return state
 
     def __setstate__(self, state):
-        "Restore the state of the channel when loading and unpickling."
+        """Restore the state of the channel when loading and unpickling."""
         self.__dict__.update(state)
         self.data_lock = threading.Lock()
         self.connected_clients = {}
@@ -1236,13 +1228,13 @@ class ChannelServer(Handler):
 
     @staticmethod
     def get_size(client, args=None):
-        "Get a number that represents a size."
+        """Get a number that represents a size."""
         while True:
             if args:
                 line, args = args[0], None
             else:
                 line = client.input('Size limitation:')
-            if line in ('all', 'infinite', 'total'):
+            if line in {'all', 'infinite', 'total'}:
                 return
             try:
                 size = int(line)
@@ -1254,12 +1246,12 @@ class ChannelServer(Handler):
 
     @property
     def client(self):
-        "Get the correct client based on the current thread."
+        """Get the correct client based on the current thread."""
         with self.data_lock:
             return self.connected_clients[threading.current_thread().ident]
 
     def handle(self):
-        "Handle people connecting to the channel server."
+        """Handle people connecting to the channel server."""
         try:
             handler = self.dispatch()
         finally:
@@ -1270,17 +1262,16 @@ class ChannelServer(Handler):
             self.disconnect()
         return handler
 
-    ########################################################################
-
     # These are additional commands this handler recognizes.
 
+    # noinspection PyUnusedLocal
     def do_admin(self, args):
-        "Owner: change this channels settings."
+        """Owner: change this channels settings."""
         if self.privileged():
             return ChannelAdmin(self.client, self)
 
     def do_ban(self, args):
-        "Owner: ban a user from joining this channel."
+        """Owner: ban a user from joining this channel."""
         client = self.client
         if self.privileged():
             if not args:
@@ -1305,7 +1296,7 @@ class ChannelServer(Handler):
                 client.print('Try add, del, or list.')
 
     def do_invite(self, args):
-        "Invite someone to join this channel."
+        """Invite someone to join this channel."""
         client = self.client
         with self.data_lock:
             exists = self.channel_name is not None
@@ -1317,10 +1308,10 @@ class ChannelServer(Handler):
             self.send_invitation(args, client)
 
     def do_kick(self, args, verbose=True):
-        "Owner: kick a user off this channel."
+        """Owner: kick a user off this channel."""
         if self.privileged():
             name = args[0] if args else self.client.input('Who?')
-            printer = self.client.print if verbose else lambda *args: None
+            printer = self.client.print if verbose else lambda *_: None
             if not name:
                 printer('Cancelling ...')
                 return
@@ -1331,18 +1322,19 @@ class ChannelServer(Handler):
                     return
                 with self.data_lock:
                     connected = self.connected_clients.items()
-                for ident, client in connected:
+                for identity, client in connected:
                     if client.name == name:
                         with self.data_lock:
-                            if ident in self.connected_clients:
+                            if identity in self.connected_clients:
                                 self.kicked.append(name)
                                 printer(name, 'has been kicked.')
                                 break
                 else:
                     printer(name, 'is not on this channel.')
 
+    # noinspection PyUnusedLocal
     def do_list(self, args):
-        "Show everyone connected to this channel."
+        """Show everyone connected to this channel."""
         with self.data_lock:
             client_list = tuple(self.connected_clients.values())
         if len(client_list) == 1:
@@ -1353,7 +1345,7 @@ class ChannelServer(Handler):
                 self.client.print('   ', client.name)
 
     def do_mute(self, args):
-        "Access and change your muted user list."
+        """Access and change your muted user list."""
         client = self.client
         if not args:
             client.print('Try add, del, or list.')
@@ -1370,8 +1362,9 @@ class ChannelServer(Handler):
         else:
             self.client.print('Try add, del, or list.')
 
+    # noinspection PyUnusedLocal
     def do_summary(self, args):
-        "Proof of concept: Mark V Shaney summarizes the channel."
+        """Proof of concept: Mark V Shaney summarizes the channel."""
         with self.data_lock:
             buffer = self.buffer[:]
         if buffer:
@@ -1380,8 +1373,8 @@ class ChannelServer(Handler):
         else:
             self.client.print('There is nothing to summarize.')
 
-    def do_wisper(self, args):
-        "Send a message to one specific person."
+    def do_whisper(self, args):
+        """Send a message to one specific person."""
         client = self.client
         name = args[0] if args else client.input('Who?')
         if not name:
@@ -1392,17 +1385,15 @@ class ChannelServer(Handler):
             return
         message = client.input('Message:')
         if not message:
-            client.print('You may not wisper empty messages.')
+            client.print('You may not whisper empty messages.')
             return
-        if self.send_wisper(name, message):
+        if self.send_whisper(name, message):
             client.print('Message sent.')
         else:
             client.print(name, 'no longer has an account.')
 
-    ########################################################################
-
     def add_ban(self, client, name):
-        "Try to ban user identified by name."
+        """Try to ban user identified by name."""
         protected = self.is_protected(name)
         if protected is not None:
             if protected:
@@ -1418,7 +1409,7 @@ class ChannelServer(Handler):
                 client.print(name, 'was already been banned.')
 
     def add_line(self, name, line):
-        "Add a line to the channel buffer."
+        """Add a line to the channel buffer."""
         with self.data_lock:
             if self.buffer_size is None:
                 buffer_size = self.builtin_buffer_limit
@@ -1428,18 +1419,18 @@ class ChannelServer(Handler):
             if buffer_size:
                 self.buffer.append(channel_line)
                 if len(self.buffer) > buffer_size:
-                    del self.buffer[:len(self.buffer)-buffer_size]
+                    del self.buffer[:len(self.buffer) - buffer_size]
             return channel_line
 
     def add_mute(self, muted, client):
-        "Add someone to list of muted people."
+        """Add someone to list of muted people."""
         with self.data_lock:
             okay = OutsideMenu.account_exists(muted)
             if okay:
                 if muted in self.muted_to_muter:
-                    muters = self.muted_to_muter[muted]
-                    if client.name not in muters:
-                        muters.append(client.name)
+                    muting_clients = self.muted_to_muter[muted]
+                    if client.name not in muting_clients:
+                        muting_clients.append(client.name)
                         okay += 1
                 else:
                     self.muted_to_muter[muted] = [client.name]
@@ -1456,7 +1447,7 @@ class ChannelServer(Handler):
                 client.print('Cancelling ...')
 
     def authenticate(self):
-        "Allow client to authenticate to the channel if needed."
+        """Allow client to authenticate to the channel if needed."""
         with self.data_lock:
             password = self.password
         if not password or self.privileged(False):
@@ -1464,12 +1455,14 @@ class ChannelServer(Handler):
         return self.client.input('Password to connect:') == password
 
     def broadcast(self, channel_line, echo):
-        "Send message to all connected clients except the sender."
+        """Send message to all connected clients except the sender."""
         client = self.client
         with self.data_lock:
             clients = tuple(self.connected_clients.values())
             muter = self.muted_to_muter.get(channel_line.source, [])
             kicked = tuple(self.kicked)
+
+        # noinspection PyShadowingNames
         def accept(destination):
             if destination.name in kicked:
                 return False
@@ -1478,17 +1471,18 @@ class ChannelServer(Handler):
             if echo:
                 return True
             return destination is not client
+
         for destination in filter(accept, clients):
             channel_line.echo(destination)
 
     def connect(self, client):
-        "Connect the client to this channel."
+        """Connect the client to this channel."""
         with self.data_lock:
             self.connected_clients[threading.current_thread().ident] = client
         return self
 
     def del_ban(self, client, name):
-        "Try to remove a ban from user identified by name."
+        """Try to remove a ban from user identified by name."""
         with self.data_lock:
             will_remove = name in self.banned
             if will_remove:
@@ -1500,28 +1494,28 @@ class ChannelServer(Handler):
         return False
 
     def del_mute(self, muted, client):
-        "Remove someone from list of muted people."
+        """Remove someone from list of muted people."""
         if muted:
             message = muted + ' was not muted.'
             with self.data_lock:
                 if muted in self.muted_to_muter:
-                    muters = self.muted_to_muter[muted]
-                    if client.name in muters:
-                        message = muted + ' has been unmuted.'
-                        muters.remove(client.name)
-                        if not muters:
+                    muting_clients = self.muted_to_muter[muted]
+                    if client.name in muting_clients:
+                        message = muted + ' is no longer muted.'
+                        muting_clients.remove(client.name)
+                        if not muting_clients:
                             del self.muted_to_muter[muted]
             client.print(message)
         else:
             client.print('Cancelling ...')
 
     def disconnect(self):
-        "Remove the client from this channel's registry."
+        """Remove the client from this channel's registry."""
         with self.data_lock:
             del self.connected_clients[threading.current_thread().ident]
 
     def dispatch(self):
-        "Ensure the channel is setup before allow people to enter."
+        """Ensure the channel is setup before allow people to enter."""
         client = self.client
         with self.data_lock:
             if self.status == self.state.final:
@@ -1537,7 +1531,7 @@ class ChannelServer(Handler):
             finally:
                 with self.data_lock:
                     status = self.status = self.state.ready
-        if status in (self.state.setup, self.state.reset):
+        if status in {self.state.setup, self.state.reset}:
             client.print(self.owner, 'is setting up this channel.')
             return
         elif status == self.state.ready:
@@ -1546,7 +1540,7 @@ class ChannelServer(Handler):
             raise ValueError(str(status) + ' is not a proper status value!')
 
     def is_protected(self, name):
-        "Find out if user identified by name has certain protections."
+        """Find out if user identified by name has certain protections."""
         with self.data_lock:
             if self.owner == name:
                 return True
@@ -1557,7 +1551,7 @@ class ChannelServer(Handler):
             return administrator
 
     def list_ban(self, client):
-        "List the names of users banned on this channel."
+        """List the names of users banned on this channel."""
         with self.data_lock:
             banned = tuple(self.banned)
         if banned:
@@ -1568,7 +1562,7 @@ class ChannelServer(Handler):
             client.print('No one has been banned on this channel.')
 
     def list_mute(self, client):
-        "List people who have been muted."
+        """List people who have been muted."""
         with self.data_lock:
             m2m = self.muted_to_muter.copy()
         you_mute = []
@@ -1580,8 +1574,8 @@ class ChannelServer(Handler):
         else:
             client.print('Your list is empty.')
 
-    def may_wisper(self, name):
-        "Find out if client may wisper to user identified by name."
+    def may_whisper(self, name):
+        """Find out if client may whisper to user identified by name."""
         sender = self.client.name
         with self.data_lock:
             if name in self.muted_to_muter.get(sender, ()):
@@ -1592,7 +1586,7 @@ class ChannelServer(Handler):
                 return client
 
     def message_loop(self):
-        "Process incoming commands from client."
+        """Process incoming commands from client."""
         client = self.client
         event = ChannelLine('EVENT', client.name + ' is joining.')
         self.broadcast(event, False)
@@ -1617,7 +1611,7 @@ class ChannelServer(Handler):
                 self.broadcast(channel_line, True)
 
     def privileged(self, show_error=True):
-        "Find out if current user is privileged and display error if needed."
+        """Check if current user is privileged and display error if needed."""
         client = self.client
         with client.account.data_lock:
             if client.account.administrator:
@@ -1629,7 +1623,7 @@ class ChannelServer(Handler):
             client.print('Only administrators or channel owner may do that.')
 
     def run_channel(self):
-        "Handle user entering into a channel and run message loop as needed."
+        """Handle user entering channel and run message loop as needed."""
         client = self.client
         with self.data_lock:
             banned = client.name in self.banned
@@ -1648,7 +1642,7 @@ class ChannelServer(Handler):
             client.print('You have failed authentication.')
 
     def replay_buffer(self):
-        "Show the message buffer to client."
+        """Show the message buffer to client."""
         with self.data_lock:
             if self.replay_size is None:
                 buffer = tuple(self.buffer)
@@ -1661,7 +1655,7 @@ class ChannelServer(Handler):
             line.echo(client)
 
     def send_invitation(self, args, client):
-        "Send an invitation to another users to join this channel."
+        """Send an invitation to another users to join this channel."""
         name = args[0] if args else client.input('Who?')
         if name:
             if name == client.name:
@@ -1683,40 +1677,40 @@ class ChannelServer(Handler):
         else:
             client.print('Cancelling ...')
 
-    def send_wisper(self, name, message):
-        "Send a wispered message to user identified by name."
-        client = self.may_wisper(name)
+    def send_whisper(self, name, message):
+        """Send a whispered message to user identified by name."""
+        client = self.may_whisper(name)
         if client is None:
             return OutsideMenu.deliver_message(self.client.name, name, message)
         client.print('({}) {}'.format(self.client.name, message))
         return True
 
     def show_status(self):
-        "Show how many people are connected to the channel."
+        """Show how many people are connected to the channel."""
         with self.data_lock:
             connected = len(self.connected_clients)
         args = connected, ('people are', 'person is')[connected == 1]
         self.client.print('{} {} connected.'.format(*args))
 
     def setup_buffer_size(self):
-        "Allow the client to set the buffer size."
+        """Allow the client to set the buffer size."""
         client = self.client
         answer = client.input('Do you want to set the buffer size?')
-        if answer in ('yes', 'true', '1'):
+        if answer in {'yes', 'true', '1'}:
             size = self.get_size(client)
             with self.data_lock:
                 self.buffer_size = size
 
     def setup_channel(self):
-        "Allow client to setup the channel (password, buffer, and replay)."
+        """Allow client to setup the channel (password, buffer, and replay)."""
         self.setup_password()
         self.setup_buffer_size()
         self.setup_replay_size()
 
     def setup_password(self):
-        "Allow client to set the password."
+        """Allow client to set the password."""
         answer = self.client.input('Password protect this channel?')
-        if answer in ('yes', 'true', '1'):
+        if answer in {'yes', 'true', '1'}:
             while True:
                 password = self.client.input('Set password to:')
                 if password:
@@ -1727,51 +1721,50 @@ class ChannelServer(Handler):
                     self.client.print('Password may not be empty.')
 
     def setup_replay_size(self):
-        "Allow the client to set the replay size."
+        """Allow the client to set the replay size."""
         client = self.client
         answer = client.input('Do you want to set the replay size?')
-        if answer in ('yes', 'true', '1'):
+        if answer in {'yes', 'true', '1'}:
             size = self.get_size(client)
             with self.data_lock:
                 self.replay_size = size
-
-    ########################################################################
 
     # The following commands will never be created using the current
     # framework this program is built upon. They are here to reflect
     # what may happen in the future, dreams of greater expectations.
 
+    # noinspection PyUnusedLocal
     def do_bot(self, args):
-        "Owner: add optional channel commands."
+        """Owner: add optional channel commands."""
         if self.privileged():
             self.client.print('Reserved command for future expansion ...')
             # this would be a good place for the math expression evaluator
 
+    # noinspection PyUnusedLocal
     def do_map(self, args):
-        "Owner: add optional channel modifiers."
+        """Owner: add optional channel modifiers."""
         if self.privileged():
             self.client.print('Reserved command for future expansion ...')
             # scrambling the middle letters of all words would be very fun
 
+    # noinspection PyUnusedLocal
     def do_run(self, args):
-        "Owner: add optional channel extensions."
+        """Owner: add optional channel extensions."""
         if self.privileged():
             self.client.print('Reserved command for future expansion ...')
             # alternate programs could be implemented and executed via run
 
-################################################################################
 
 class ChannelAdmin(Handler):
-
-    "ChannelAdmin(client, channel) -> ChannelAdmin instance"
+    """ChannelAdmin(client, channel) -> ChannelAdmin instance"""
 
     def __init__(self, client, channel):
-        "Initialize admin console with client and associated channel."
+        """Initialize admin console with client and associated channel."""
         super().__init__(client)
         self.channel = channel
 
     def handle(self):
-        "Acquire control of the channel and run the command loop."
+        """Acquire control of the channel and run the command loop."""
         admin = self.channel.admin_lock.acquire(False)
         if admin:
             with self.channel.data_lock:
@@ -1789,38 +1782,39 @@ class ChannelAdmin(Handler):
                               'is currently using the admin console.')
             self.channel.connect(self.client)
 
-    ########################################################################
-
     # These are additional commands this handler recognizes.
 
     def do_buffer(self, args):
-        "Set the buffer size of this channel."
+        """Set the buffer size of this channel."""
         size = ChannelServer.get_size(self.client, args)
         with self.channel.data_lock:
             self.channel.buffer_size = size
 
+    # noinspection PyUnusedLocal
     def do_close(self, args):
-        "Kick everyone off the channel (useful after delete)."
+        """Kick everyone off the channel (useful after delete)."""
         with self.channel.data_lock:
             for client in self.channel.connected_clients.values():
                 self.channel.kicked.append(client.name)
         self.client.print('Everyone has been kicked off the channel.')
 
+    # noinspection PyUnusedLocal
     def do_delete(self, args):
-        "Unregister this channel as though it did not exist."
+        """Un-register this channel as though it did not exist."""
         with self.channel.data_lock:
             deleted = self.channel.channel_name is None
             if not deleted:
                 assert InsideMenu.delete_channel(self.channel.channel_name), \
-                       'Name was set, but it was not registered.'
+                    'Name was set, but it was not registered.'
                 self.channel.channel_name = None
         if deleted:
             self.client.print('This channel had been previously deleted.')
         else:
-            self.client.print('This channel is no longer enterable.')
+            self.client.print('This channel is no longer enabled.')
 
+    # noinspection PyUnusedLocal
     def do_finalize(self, args):
-        "Delete, close, and reset the channel (returns you to main menu)."
+        """Delete, close, and reset the channel (returns you to main menu)."""
         with self.channel.data_lock:
             self.channel.status = ChannelServer.state.final
             if self.channel.channel_name is not None:
@@ -1833,8 +1827,9 @@ class ChannelAdmin(Handler):
         self.client.print('Returning to the main menu ...')
         return EOFError()
 
+    # noinspection PyUnusedLocal
     def do_history(self, args):
-        "Show the entire contents of the channel buffer."
+        """Show the entire contents of the channel buffer."""
         with self.channel.data_lock:
             buffer = tuple(self.channel.buffer)
         if buffer:
@@ -1844,7 +1839,7 @@ class ChannelAdmin(Handler):
             self.client.print('The channel buffer is empty.')
 
     def do_owner(self, args):
-        "Change the owner of this channel."
+        """Change the owner of this channel."""
         new_owner = args[0] if args else self.client.input('New owner:')
         if not new_owner:
             self.client.print('Cancelling ...')
@@ -1852,6 +1847,7 @@ class ChannelAdmin(Handler):
         if len(args) > 1 or len(new_owner.split()) > 1:
             self.client.print('Username may not have whitespace!')
             return
+        user_exists = False
         with self.channel.data_lock:
             different = new_owner != self.channel.owner
             if different:
@@ -1866,7 +1862,7 @@ class ChannelAdmin(Handler):
             self.client.print(new_owner, 'does not have an account.')
 
     def do_password(self, args):
-        "Change the password of this channel."
+        """Change the password of this channel."""
         if not args:
             self.client.print('Try set or unset.')
             return
@@ -1886,14 +1882,15 @@ class ChannelAdmin(Handler):
         else:
             self.client.print('Try set or unset.')
 
+    # noinspection PyUnusedLocal
     def do_purge(self, args):
-        "Clear the contents of the channel buffer."
+        """Clear the contents of the channel buffer."""
         with self.channel.data_lock:
             self.channel.buffer = []
         self.client.print('The buffer has been cleared.')
 
     def do_rename(self, args):
-        "Give this channel a new name not used by another channel."
+        """Give this channel a new name not used by another channel."""
         with self.channel.data_lock:
             old_name = self.channel.channel_name
         if old_name is None:
@@ -1910,13 +1907,14 @@ class ChannelAdmin(Handler):
         self.show_rename_result(exists, success, new_name)
 
     def do_replay(self, args):
-        "Set the replay size of this channel."
+        """Set the replay size of this channel."""
         size = ChannelServer.get_size(self.client, args)
         with self.channel.data_lock:
             self.channel.replay_size = size
 
+    # noinspection PyUnusedLocal
     def do_reset(self, args):
-        "Make the channel like new again with nothing in it."
+        """Make the channel like new again with nothing in it."""
         with self.channel.data_lock:
             self.channel.status = ChannelServer.state.reset
             for client in self.channel.connected_clients.values():
@@ -1924,8 +1922,9 @@ class ChannelAdmin(Handler):
             self.reset_channel()
         self.client.print('Channel has been reset, and you are its owner.')
 
+    # noinspection PyUnusedLocal
     def do_settings(self, args):
-        "Show channel owner, password, buffer size, and replay size."
+        """Show channel owner, password, buffer size, and replay size."""
         with self.channel.data_lock:
             owner = self.channel.owner
             password = self.channel.password
@@ -1938,10 +1937,8 @@ class ChannelAdmin(Handler):
         size = 'Infinite' if replay_size is None else replay_size
         self.client.print('Replay size:', size)
 
-    ########################################################################
-
     def reset_channel(self):
-        "Restore the channel to a new-like condition."
+        """Restore the channel to a new-like condition."""
         self.channel.owner = self.client.name
         self.channel.password = ''
         self.channel.buffer = []
@@ -1951,7 +1948,7 @@ class ChannelAdmin(Handler):
         self.channel.banned = []
 
     def show_rename_result(self, exists, success, new_name):
-        "Show the results of an attempted rename operation."
+        """Show the results of an attempted rename operation."""
         if not exists:
             self.client.print('This channel has been deleted.')
             return
@@ -1962,7 +1959,7 @@ class ChannelAdmin(Handler):
             self.client.print('The name', new_name, 'is already in use.')
 
     def try_rename(self, new_name):
-        "Try to rename the channel to a new name."
+        """Try to rename the channel to a new name."""
         success = None
         with self.channel.data_lock:
             old_name = self.channel.channel_name
@@ -1973,38 +1970,32 @@ class ChannelAdmin(Handler):
                     self.channel.channel_name = new_name
         return exists, success
 
-################################################################################
 
 class ChannelLine:
-
-    "ChannelLine(source, message) -> ChannelLine instance"
+    """ChannelLine(source, message) -> ChannelLine instance"""
 
     def __init__(self, source, message):
-        "Initialize structure with message and its source."
+        """Initialize structure with message and its source."""
         self.source = source
         self.message = message
 
     def echo(self, client):
-        "Print a formatted line to the client."
+        """Print a formatted line to the client."""
         client.print('[{}] {}'.format(self.source, self.message))
 
-################################################################################
 
 class ContactManager(Handler):
-
-    "ContactManager(client) -> ContactManager instance"
+    """ContactManager(client) -> ContactManager instance"""
 
     def handle(self):
-        "Show client status of action and run command loop."
+        """Show client status of action and run command loop."""
         self.client.print('Opening contact manager ...')
         return self.command_loop()
-
-    ########################################################################
 
     # These are additional commands this handler recognizes.
 
     def do_add(self, args):
-        "Add a friend to your contact list."
+        """Add a friend to your contact list."""
         name = args[0] if args else self.client.input('Who?')
         try:
             status = self.client.account.add_contact(name)
@@ -2017,41 +2008,38 @@ class ContactManager(Handler):
                 self.client.print(name, 'does not currently exist.')
 
     def do_remove(self, args):
-        "Remove someone from your contact list."
+        """Remove someone from your contact list."""
         name = args[0] if args else self.client.input('Who?')
         if self.client.account.remove_contact(name):
             self.client.print(name, 'has been removed from your contact list.')
         else:
             self.client.print(name, 'is not in your contact list.')
 
+    # noinspection PyUnusedLocal
     def do_show(self, args):
-        "Display your friend list with online/offline status."
+        """Display your friend list with online/offline status."""
         self.client.account.show_contacts(self.client, True)
 
-################################################################################
 
 class MessageManager(Handler):
-
-    "MessageManager(client) -> MessageManager instance"
+    """MessageManager(client) -> MessageManager instance"""
 
     def handle(self):
-        "Show client status of action and run command loop."
+        """Show client status of action and run command loop."""
         self.client.print('Opening message manager ...')
         return self.command_loop()
-
-    ########################################################################
 
     # These are additional commands this handler recognizes.
 
     def do_delete(self, args):
-        "Provides various options for deleting your messages."
+        """Provides various options for deleting your messages."""
         data = self.parse_args(args, True)
         if data is not None:
             self.client.account.delete_message(data)
             self.client.print('Deletion has been completed.')
 
     def do_read(self, args):
-        "Allows you to read a message in its entirety."
+        """Allows you to read a message in its entirety."""
         data = self.parse_args(args, False)
         if data is not None:
             data.new = False
@@ -2066,7 +2054,7 @@ class MessageManager(Handler):
             self.client.print('=' * 70)
 
     def do_send(self, args):
-        "Allows you to send a message to someone else."
+        """Allows you to send a message to someone else."""
         name = args[0] if args else self.client.input('Destination:')
         if name == self.client.name:
             self.client.print('You are not allowed to talk to yourself.')
@@ -2083,22 +2071,21 @@ class MessageManager(Handler):
         else:
             self.client.print(name, 'was removed while you were writing.')
 
+    # noinspection PyUnusedLocal
     def do_show(self, args, internal=False):
-        "Shows messages summaries with status information."
+        """Shows messages summaries with status information."""
         data = self.client.account.show_message_summary(self.client, True, 70)
         if internal:
             return data
 
-    ########################################################################
-
     def find_message(self, args, allow_all):
-        "Find a message that the client has requested."
+        """Find a message that the client has requested."""
         clue = args[0]
         try:
             index = int(clue) - 1
         except ValueError:
             show = self.client.account.show_message_summary
-            if clue in ('read', 'unread'):
+            if clue in {'read', 'unread'}:
                 messages = show(self.client, True, 70, filter_status=clue)
             else:
                 messages = show(self.client, True, 70, filter_source=clue)
@@ -2111,7 +2098,7 @@ class MessageManager(Handler):
             self.client.print('That is not a valid message number.')
 
     def get_message(self):
-        "Get message to send from the client."
+        """Get message to send from the client."""
         lines = []
         self.client.print('Please compose your message.')
         self.client.print('Enter 2 blank lines to send.')
@@ -2124,14 +2111,14 @@ class MessageManager(Handler):
         return '\n'.join(lines[:-2])
 
     def parse_args(self, args, allow_all):
-        "Parse the arguments, show messages, and pick them."
+        """Parse the arguments, show messages, and pick them."""
         if args:
             return self.find_message(args, allow_all)
         messages = self.do_show(args, True)
         return self.pick_message(messages, allow_all)
 
     def pick_message(self, messages, allow_all):
-        "Pick a message the client wants."
+        """Pick a message the client wants."""
         while messages:
             line = self.client.input('Which one?')
             if not line:
@@ -2147,38 +2134,32 @@ class MessageManager(Handler):
             else:
                 return messages[index]
 
-################################################################################
 
 class Message(ChannelLine):
-
-    "Message(source, message) -> Message instance"
+    """Message(source, message) -> Message instance"""
 
     def __init__(self, source, message):
-        "Initialize message that includes new (read/unread) flag."
+        """Initialize message that includes new (read/unread) flag."""
         super().__init__(source, message)
         self.new = True
 
-################################################################################
 
 class AccountOptions(Handler):
-
-    "AccountOptions(client) -> AccountOptions instance"
+    """AccountOptions(client) -> AccountOptions instance"""
 
     def handle(self):
-        "Show client status of action and run command loop."
+        """Show client status of action and run command loop."""
         self.client.print('Opening account options ...')
         return self.command_loop()
-
-    ########################################################################
 
     # These are additional commands this handler recognizes.
 
     def do_delete_account(self, args):
-        "Delete your account permanently."
+        """Delete your account permanently."""
         if args and args[0] == 'force':
             delete = True
         else:
-            delete = self.client.input('Seriously?') in ('yes', 'true', '1')
+            delete = self.client.input('Seriously?') in {'yes', 'true', '1'}
         if delete:
             self.client.print('Your account and connection are being closed.')
             OutsideMenu.delete_account(self.client.name)
@@ -2186,7 +2167,7 @@ class AccountOptions(Handler):
         self.client.print('Cancelling ...')
 
     def do_password(self, args):
-        "Change your password."
+        """Change your password."""
         old = args[0] if args else self.client.input('Old password:')
         account = self.client.account
         with account.data_lock:
@@ -2202,7 +2183,7 @@ class AccountOptions(Handler):
             self.client.print('Your password may not be empty.')
 
     def do_purge(self, args):
-        "Purge your messages, contacts, or both."
+        """Purge your messages, contacts, or both."""
         command = args[0] if args else self.client.input('What?')
         if command == 'messages':
             self.client.account.purge_messages()
@@ -2217,28 +2198,25 @@ class AccountOptions(Handler):
         else:
             self.client.print('Try messages, contacts, or both.')
 
-################################################################################
-################################################################################
 
 class MarkVShaney(Handler):
-
-    "MarkVShaney(client, buffer, size, channel) -> MarkVShaney instance"
+    """MarkVShaney(client, buffer, size, channel) -> MarkVShaney instance"""
 
     markov_chain_length = 3
     max_summary_failing = 5
 
     def __init__(self, client, buffer, size, channel):
-        "Initialize the handler for summarizing the channel."
+        """Initialize the handler for summarizing the channel."""
         super().__init__(client)
         self.buffer = buffer
         self.size = size
         self.channel = channel
 
     def handle(self):
-        "Provide a Mark V Shaney summary of the channel and return."
+        """Provide a Mark V Shaney summary of the channel and return."""
         arrays = self.prepare()
         mcv_len = self.markov_chain_length
-        start = tuple(map(lambda words: tuple(words[:mcv_len-1]), arrays))
+        start = tuple(map(lambda words: tuple(words[:mcv_len - 1]), arrays))
         stop = tuple(map(lambda words: tuple(words[-mcv_len:]), arrays))
         chains = self.create_chains(arrays)
         cache = self.create_summary(start, stop, chains)
@@ -2246,7 +2224,7 @@ class MarkVShaney(Handler):
         self.channel.connect(self.client)
 
     def prepare(self):
-        "Process the text into sentences and return them."
+        """Process the text into sentences and return them."""
         sentences = []
         for line in self.buffer:
             words = line.message.split()
@@ -2256,7 +2234,7 @@ class MarkVShaney(Handler):
         return tuple(sentences)
 
     def create_chains(self, arrays):
-        "Create the chains uses to create the randomized sentences."
+        """Create the chains uses to create the randomized sentences."""
         chains = {}
         for sentence in arrays:
             length = len(sentence)
@@ -2271,9 +2249,9 @@ class MarkVShaney(Handler):
                     else:
                         chains[key] = [value]
         return chains
-            
+
     def create_summary(self, start, stop, chains):
-        "Create the random sentences that make up the summary."
+        """Create the random sentences that make up the summary."""
         cache = []
         for sentence in range(self.size):
             for attempt in range(self.max_summary_failing):
@@ -2286,7 +2264,7 @@ class MarkVShaney(Handler):
         return cache
 
     def create_sentence(self, start, stop, chains):
-        "Create a single Markov V Shaney sentence for the summary."
+        """Create a single Markov V Shaney sentence for the summary."""
         choice = random.SystemRandom().choice
         sentence = []
         key = choice(start)
@@ -2295,10 +2273,10 @@ class MarkVShaney(Handler):
             sentence.append(choice(chains[key]))
             if tuple(sentence[-self.markov_chain_length:]) in stop:
                 return ' '.join(sentence)
-            key = tuple(sentence[1-self.markov_chain_length:])
+            key = tuple(sentence[1 - self.markov_chain_length:])
 
     def print_summary(self, cache):
-        "Print the summary provided in the given cache."
+        """Print the summary provided in the given cache."""
         if cache:
             line = '~' * max(map(len, cache))
             self.client.print(line)
@@ -2308,19 +2286,16 @@ class MarkVShaney(Handler):
         else:
             self.client.print('There is nothing worth summarizing.')
 
-################################################################################
-################################################################################
 
 class MathExpressionEvaluator(Handler):
-
-    "MathExpressionEvaluator(client) -> MathExpressionEvaluator instance"
+    """MathExpressionEvaluator(client) -> MathExpressionEvaluator instance"""
 
     def handle(self):
-        "Handle math statements provided by the client by looping."
+        """Handle math statements provided by the client by looping."""
         local = {}
         while True:
             line = self.client.input('Eval:')
-            if line in ('exit', 'quit', 'stop'):
+            if line in {'exit', 'quit', 'stop'}:
                 return
             try:
                 self.run(line, local)
@@ -2328,13 +2303,14 @@ class MathExpressionEvaluator(Handler):
                 self.client.print(error.args[0])
 
     def run(self, line, local):
-        "Execute the line using the local storage."
+        """Execute the line using the local storage."""
         lines = self.tokenize(line)
         self.build_operations(lines)
         self.evaluate(lines, local)
 
-    def tokenize(self, line):
-        "Parse the line into its individual tokens."
+    @staticmethod
+    def tokenize(line):
+        """Parse the line into its individual tokens."""
         lines = []
         # replace ';' with line separators
         string = line.replace(';', '\n')
@@ -2347,13 +2323,14 @@ class MathExpressionEvaluator(Handler):
             # tokens are separated by white-space
             for token in line.split():
                 # operations are processed later
-                if token in ('=', '+', '-', '*', '/', '//', '%',
+                if token in {'=', '+', '-', '*', '/', '//', '%',
                              '**', '^', 'and', '&', 'or', '|',
-                             '==', '!=', '>', '<', '>=', '<='):
+                             '==', '!=', '>', '<', '>=', '<='}:
                     tokens.append(token)
                 else:
+                    # noinspection PyPep8,PyBroadException
                     try:
-                        # the token is a constant if it can be converted to a float
+                        # token is constant if it can be converted to float
                         tokens.append(Constant(float(token)))
                     except:
                         # ... otherwise we assume that it is a variable
@@ -2362,7 +2339,7 @@ class MathExpressionEvaluator(Handler):
         return lines
 
     def build_operations(self, lines):
-        "Create an expression tree to execute the math statement."
+        """Create an expression tree to execute the math statement."""
         # now we work on sorting through operations
         for line_index, line in enumerate(lines):
             # assignment is optional on a line
@@ -2372,7 +2349,8 @@ class MathExpressionEvaluator(Handler):
                 # single variables must be on the left of '='
                 for section in tokens[:-1]:
                     assert len(section) == 1, 'Must Have Single Token'
-                    assert isinstance(section[0], Variable), 'Must Assign to Variable'
+                    assert isinstance(section[0],
+                                      Variable), 'Must Assign to Variable'
                 # construct an operation from the last tokens
                 tokens[-1] = self.flatten(tokens[-1])
                 # create as many assignment operations as needed
@@ -2386,25 +2364,28 @@ class MathExpressionEvaluator(Handler):
                 op = self.flatten(line)
                 lines[line_index] = Print(op, self.client.print)
 
-    def split(self, line):
-        "Divide the given tokens on the equal sign."
+    @staticmethod
+    def split(line):
+        """Divide the given tokens on the equal sign."""
         # split the tokens in the line on '='
         tokens = []
         while '=' in line:
             index = line.index('=')
             tokens.append(line[:index])
-            line = line[index+1:]
+            line = line[index + 1:]
         return tokens + [line]
 
-    def flatten(self, tokens):
-        "Flatten the operations into a single operation."
+    @staticmethod
+    def flatten(tokens):
+        """Flatten the operations into a single operation."""
         # check for odd number of tokens
         assert len(tokens) % 2 == 1, 'Must Have Odd Number of Tokens'
         toggle = True
         # check the token construction sequence
         for token in tokens:
             if toggle:
-                assert isinstance(token, (Constant, Variable)), 'Must Have Constant or Variable'
+                assert isinstance(token, (
+                    Constant, Variable)), 'Must Have Constant or Variable'
             else:
                 assert isinstance(token, str), 'Must Have Operation'
             toggle = not toggle
@@ -2414,93 +2395,96 @@ class MathExpressionEvaluator(Handler):
         # construct the needed operations starting from the beginning
         op = Operation(*tokens[:3])
         for index in range(3, len(tokens), 2):
-            op = Operation(op, tokens[index], tokens[index+1])
+            op = Operation(op, tokens[index], tokens[index + 1])
         return op
 
-    def evaluate(self, lines, local):
-        "Execute an evalutation on all of the math expression lines."
+    @staticmethod
+    def evaluate(lines, local):
+        """Execute an evaluation on all of the math expression lines."""
         # evaluate the lines in order with the local dictionary
         for line in lines:
-            local['_'] = line.Evaluate(local)
+            local['_'] = line.evaluate(local)
 
-################################################################################
 
-class Expression:
+class Expression(abc.ABC):
+    """Expression() -> TypeError exception"""
 
-    "Expression() -> NotImplementedError exception"
-
+    @abc.abstractmethod
     def __init__(self):
-        "This is a base class for math expressions."
-        raise NotImplementedError()
+        """This is a base class for math expressions."""
+        pass
 
     def __repr__(self):
-        "Provide a useful representation of the expression object."
-        klass = type(self).__name__
-        private = '_{}__'.format(klass)
+        """Provide a useful representation of the expression object."""
+        kind = type(self).__name__
+        private = '_{}__'.format(kind)
         args = []
         for name in self.__dict__:
             if name.startswith(private):
                 value = self.__dict__[name]
                 name = name[len(private):]
                 args.append('{}={!r}'.format(name, value))
-        return '{}({})'.format(klass, ', '.join(args))
-    
-    def Evaluate(self, dictionary):
-        "Expressions should be able to evaluate themselves."
-        raise NotImplementedError()
+        return '{}({})'.format(kind, ', '.join(args))
 
-################################################################################
+    @abc.abstractmethod
+    def evaluate(self, dictionary):
+        """Expressions should be able to evaluate themselves."""
+        pass
+
 
 class Constant(Expression):
-
-    "Constant(value) -> Constant instance"
+    """Constant(value) -> Constant instance"""
 
     def __init__(self, value):
-        "Initialize the constant with its value."
+        """Initialize the constant with its value."""
+        super().__init__()
         self.__value = value
 
-    def Evaluate(self, dictionary):
-        "Return the value when evaluated."
+    def evaluate(self, dictionary):
+        """Return the value when evaluated."""
         return self.__value
 
-################################################################################
 
 class Variable(Expression):
-
-    "Variable(name) -> Variable instance"
+    """Variable(name) -> Variable instance"""
 
     def __init__(self, name):
-        "Initialize the variable with its name."
+        """Initialize the variable with its name."""
+        super().__init__()
         self.__name = name
 
-    def Evaluate(self, dictionary):
-        "Try to find and return the value of the variable."
+    def evaluate(self, dictionary):
+        """Try to find and return the value of the variable."""
         if self.__name not in dictionary:
             raise Exception('Unknown variable: ' + self.__name)
         return dictionary[self.__name]
 
-################################################################################
+    @property
+    def name(self):
+        """Property of the variable's name."""
+        return self.__name
+
 
 class Operation(Expression):
-
-    "Operation(left, op, right) -> Operation instance"
+    """Operation(left, op, right) -> Operation instance"""
 
     def __init__(self, left, op, right):
-        "Initialize the operation with the left and right sides and operator."
+        """Initialize the operation with each side and operator."""
+        super().__init__()
         self.__left = left
         self.__op = op
         self.__right = right
 
-    def Evaluate(self, dictionary):
-        "Evaluate the operation based on the stored operator."
+    def evaluate(self, dictionary):
+        """Evaluate the operation based on the stored operator."""
         if self.__op == '=':
             assert isinstance(self.__left, Variable), 'Must Assign to Variable'
-            name = self.__left._Variable__name
-            value = self.__right.Evaluate(dictionary)
+            name = self.__left.name
+            value = self.__right.evaluate(dictionary)
             dictionary[name] = value
             return value
-        x = self.__left.Evaluate(dictionary)
-        y = self.__right.Evaluate(dictionary)
+        x = self.__left.evaluate(dictionary)
+        y = self.__right.evaluate(dictionary)
         if self.__op == '+':
             return x + y
         if self.__op == '-':
@@ -2516,7 +2500,7 @@ class Operation(Expression):
         if self.__op == '**':
             return x ** y
         if self.__op == '^':
-             return float(int(x) ^ int(y))
+            return float(int(x) ^ int(y))
         if self.__op == 'and':
             return x and y
         if self.__op == '&':
@@ -2539,37 +2523,34 @@ class Operation(Expression):
             return float(x <= y)
         raise Exception('Unknown operator: ' + self.__op)
 
-################################################################################
 
 class Print(Expression):
-
-    "Print(expression, printer) -> Print instance"
+    """Print(expression, printer) -> Print instance"""
 
     def __init__(self, expression, printer):
-        "Intialize the Print instance with an expression and printer object."
+        """Initialize the Print instance with an expression and printer."""
+        super().__init__()
         self.__expression = expression
         self.__print = printer
 
-    def Evaluate(self, dictionary):
-        "Print the expression with the printer and return."
-        value = self.__expression.Evaluate(dictionary)
+    def evaluate(self, dictionary):
+        """Print the expression with the printer and return."""
+        value = self.__expression.evaluate(dictionary)
         self.__print(value)
         return value
 
-################################################################################
-################################################################################
 
 class MathEvaluator2(Handler):
-
-    "MathEvaluator2(client) -> MathEvaluator2 instance"
+    """MathEvaluator2(client) -> MathEvaluator2 instance"""
 
     def handle(self):
-        "Create a math evaluation loop for interacting with the client."
+        """Create a math evaluation loop for interacting with the client."""
         local = {}
         while True:
             line = self.client.input('>>> ')
             if line in 'exit quit stop'.split():
                 break
+            # noinspection PyBroadException
             try:
                 self.evaluate(line, local)
             except Exception:
@@ -2577,13 +2558,15 @@ class MathEvaluator2(Handler):
                 self.client.print(error[-1], end='')
 
     def evaluate(self, source, local):
-        "Execute all math operations found in the source."
+        """Execute all math operations found in the source."""
         for expression in self.expressions(source):
             local['_'] = self.tokens(expression).evaluate(local)
 
-    def expressions(self, source):
-        "Separate expressions and yield each individually."
+    @staticmethod
+    def expressions(source):
+        """Separate expressions and yield each individually."""
         lines = source.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+        # noinspection PyShadowingNames
         uncommented = map(lambda line: line.split('#', 1)[0], lines)
         for line in uncommented:
             if line and not line.isspace():
@@ -2591,15 +2574,15 @@ class MathEvaluator2(Handler):
                     yield expression
 
     def tokens(self, string):
-        "Build an expression tree by tokenizing expression."
+        """Build an expression tree by tokenizing expression."""
         evaluator = self._tokens(string)
         if isinstance(evaluator, Operation2) and \
-           evaluator._Operation2__symbol == Operation2.ASSIGNMENT:
+                evaluator.symbol == Operation2.ASSIGNMENT:
             return evaluator
         return Print2(evaluator, self.client.print)
 
     def _tokens(self, string):
-        "Private module function: recursively builds a tree."
+        """Private module function: recursively builds a tree."""
         expression = string.strip()
         if not expression:
             raise SyntaxError('empty expression')
@@ -2625,67 +2608,68 @@ class MathEvaluator2(Handler):
             return Variable2(expression)
         raise SyntaxError(expression)
 
-################################################################################
 
-class Expression2:
+class Expression2(abc.ABC):
+    """Abstract class for Expression objects."""
 
-    "Abstract class for Expression objects."
-
+    @abc.abstractmethod
     def __init__(self):
-        "Initialize the Expression object."
-        raise NotImplementedError()
+        """Initialize the Expression object."""
+        pass
 
     def __repr__(self):
-        "Return a representation of this object."
-        klass = type(self).__name__
-        private = '_{}__'.format(klass)
+        """Return a representation of this object."""
+        kind = type(self).__name__
+        private = '_{}__'.format(kind)
         args = []
         for name in vars(self):
             if name.startswith(private):
                 key = name[len(private):]
                 value = getattr(self, name)
                 args.append('{}={!r}'.format(key, value))
-        return '{}({})'.format(klass, ', '.join(args))
+        return '{}({})'.format(kind, ', '.join(args))
 
+    @abc.abstractmethod
     def evaluate(self, bindings):
-        "Calculate the value of this object."
-        raise NotImplementedError()
+        """Calculate the value of this object."""
+        pass
 
-################################################################################
 
 class Constant2(Expression2):
-
-    "Class for storing all math constants."
+    """Class for storing all math constants."""
 
     def __init__(self, value):
-        "Initialize the Constant object."
+        """Initialize the Constant object."""
+        super().__init__()
         self.__value = value
 
     def evaluate(self, bindings):
-        "Calculate the value of this object."
+        """Calculate the value of this object."""
         return self.__value
 
-################################################################################
 
 class Variable2(Expression2):
-
-    "Class for storing all math variables."
+    """Class for storing all math variables."""
 
     def __init__(self, name):
-        "Initialize the Variable object."
+        """Initialize the Variable object."""
+        super().__init__()
         self.__name = name
 
     def evaluate(self, bindings):
-        "Calculate the value of this object."
+        """Calculate the value of this object."""
         if self.__name not in bindings:
             raise NameError(self.__name)
         return bindings[self.__name]
 
-################################################################################
+    @property
+    def name(self):
+        """Property of the variable's name."""
+        return self.__name
+
 
 class Operation2(Expression2):
-
-    "Class for executing math operations."
+    """Class for executing math operations."""
 
     ASSIGNMENT = '->'
     OPERATORS = {ASSIGNMENT: lambda a, b: None,
@@ -2710,24 +2694,25 @@ class Operation2(Expression2):
                  '<=': operator.le}
 
     def __init__(self, left, symbol, right):
-        "Initialize the Operation object."
+        """Initialize the Operation object."""
+        super().__init__()
         self.__left = left
         self.__symbol = symbol
         self.__right = right
 
     def evaluate(self, bindings):
-        "Calculate the value of this object."
+        """Calculate the value of this object."""
         if self.__symbol == self.ASSIGNMENT:
             if not isinstance(self.__right, Variable2):
                 raise TypeError(self.__right)
-            key = self.__right._Variable2__name
+            key = self.__right.name
             value = self.__left.evaluate(bindings)
             bindings[key] = value
             return value
         return self.__operate(bindings)
 
     def __operate(self, bindings):
-        "Execute operation defined by symbol."
+        """Execute operation defined by symbol."""
         if self.__symbol not in self.OPERATORS:
             raise SyntaxError(self.__symbol)
         a = self.__left.evaluate(bindings)
@@ -2738,7 +2723,7 @@ class Operation2(Expression2):
 
     @classmethod
     def split(cls, expression):
-        "Split expression on rightmost symbol."
+        """Split expression on rightmost symbol."""
         tail = cls.__split(expression)
         if tail:
             symbol, right = tail
@@ -2746,7 +2731,7 @@ class Operation2(Expression2):
 
     @classmethod
     def __split(cls, expression):
-        "Private class method: help with split."
+        """Private class method: help with split."""
         for symbol in cls.__operators:
             if symbol in expression:
                 right = expression.rsplit(symbol, 1)[1]
@@ -2755,25 +2740,27 @@ class Operation2(Expression2):
                     return symbol, right
                 return tail
 
-################################################################################
+    @property
+    def symbol(self):
+        """Property of the operation's symbol."""
+        return self.__symbol
+
 
 class Print2(Expression2):
-
-    "Class for printing all math results."
+    """Class for printing all math results."""
 
     def __init__(self, expression, printer):
-        "Initialize the Print object."
+        """Initialize the Print object."""
+        super().__init__()
         self.__expression = expression
         self.__print = printer
 
     def evaluate(self, bindings):
-        "Calculate the value of this object."
+        """Calculate the value of this object."""
         value = self.__expression.evaluate(bindings)
         self.__print(value)
         return value
 
-################################################################################
-################################################################################
 
 if __name__ == '__main__':
     main('.')
