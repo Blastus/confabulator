@@ -21,13 +21,11 @@ import logging
 import pathlib
 import socket
 import sys
-import tkinter
 import traceback
 from tkinter.constants import *
-from tkinter.messagebox import *
+from tkinter.messagebox import WARNING, OK
 
-import client.thread_box as thread_box
-from client.gui import *
+from client.safe_tkinter import *
 
 
 class SimpleClient(Frame):
@@ -248,8 +246,8 @@ class ConnectionDialog(Dialog):
         # noinspection PyTypeChecker
         c = ConnectionStatus(self, 'Chat Client', (self.address.get(), 8989))
         if c.connection is None:
-            Message(self, icon=WARNING, type=OK, title='Warning',
-                    message='Could not connect to address!').show()
+            MessageBox(self, icon=WARNING, type=OK, title='Warning',
+                       message='Could not connect to address!').show()
             return False
         self.connection = c.connection
         return True
@@ -285,12 +283,12 @@ class ConnectionStatus(Dialog):
         """Cancel the creation of the buttons at the bottom of this Dialog."""
         pass
 
-    @thread_box.MetaBox.thread
+    @MetaBox.thread
     def connect(self, result):
         """Try connecting to the server address that was given."""
         try:
             result.append(socket.create_connection(self.server_address, 10))
-        except socket.timeout:
+        except (socket.gaierror, socket.timeout):
             result.append(None)
 
     def poll(self, result):

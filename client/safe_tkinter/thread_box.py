@@ -15,7 +15,7 @@ __all__ = [
 
 import functools
 
-import client.affinity as affinity
+from . import affinity
 
 
 class BaseObject:
