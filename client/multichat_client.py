@@ -3,7 +3,7 @@ import socket
 import sys
 from tkinter.constants import *
 
-from client.safetkinter import *
+from client.gui import *
 
 
 class ConfabulatorClient(Frame):
@@ -45,12 +45,12 @@ class ConfabulatorClient(Frame):
 
     def data_ready(self):
         try:
-            s = self.remote.receive(1 << 12).decode()
+            message = self.remote.recv(1 << 12)
         except socket.error:
             pass
         else:
             self.message_area['state'] = NORMAL
-            self.message_area.insert(END, s)
+            self.message_area.insert(END, message.decode())
             self.message_area['state'] = DISABLED
             self.message_area.see(END)
         self.after_handle = self.after(100, self.data_ready)
@@ -61,8 +61,12 @@ class ConfabulatorClient(Frame):
         super().destroy()
 
     def mouse_clicked(self, _=None):
-        self.remote.sendall(self.send_area.get().encode() + b'\r\n')
-        self.send_area.delete(0, END)
+        try:
+            self.remote.sendall(self.send_area.get().encode() + b'\r\n')
+        except ConnectionAbortedError:
+            pass
+        finally:
+            self.send_area.delete(0, END)
 
     key_pressed = mouse_clicked
 

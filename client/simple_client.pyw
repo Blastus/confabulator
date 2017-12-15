@@ -21,12 +21,13 @@ import logging
 import pathlib
 import socket
 import sys
+import tkinter
 import traceback
 from tkinter.constants import *
 from tkinter.messagebox import *
 
-import client.threadbox as thread_box
-from client.safetkinter import *
+import client.thread_box as thread_box
+from client.gui import *
 
 
 class SimpleClient(Frame):
@@ -64,7 +65,7 @@ class SimpleClient(Frame):
         # Build Widgets
         self.output_area = ScrolledText(self, width=25, height=4, wrap=WORD)
         self.input_area = Entry(self)
-        self.corner = Sizegrip(self)
+        self.corner = SizeGrip(self)
         # Place Widgets
         self.output_area.grid(row=0, column=0, columnspan=2, sticky=NSEW)
         self.input_area.grid(row=1, column=0, sticky=EW)
@@ -92,14 +93,18 @@ class SimpleClient(Frame):
 
     def send(self, event):
         """Send a message across the connection from the given widget."""
-        self.connection.sendall(event.widget.get().encode() + b'\r\n')
-        event.widget.delete(0, END)
+        try:
+            self.connection.sendall(event.widget.get().encode() + b'\r\n')
+        except ConnectionAbortedError:
+            pass
+        finally:
+            event.widget.delete(0, END)
 
     def update(self):
         """Update the output area with any incoming messages."""
         self.output_area['state'] = NORMAL
         try:
-            message = self.connection.receive(1 << 12)
+            message = self.connection.recv(1 << 12)
         except socket.error:
             pass
         else:
@@ -130,7 +135,7 @@ def log_errors(entry_point, args=(), kwargs=None):
         logging.error(traceback.format_exc())
 
 
-class Dialog(Toplevel):
+class Dialog(TopLevel):
     """Dialog(parent, title=None) -> Dialog instance"""
 
     def __init__(self, parent, title=None):
@@ -265,7 +270,7 @@ class ConnectionStatus(Dialog):
         self.resizable(False, False)
         # Build Widgets
         self.message = Label(master, text='Trying to connect to address ...')
-        self.progress = Progressbar(master, orient=HORIZONTAL)
+        self.progress = ProgressBar(master, orient=HORIZONTAL)
         # Place Widgets
         self.message.grid(sticky=W, padx=10, pady=2)
         self.progress.grid(sticky=EW, padx=10, pady=2)

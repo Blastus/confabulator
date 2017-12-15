@@ -13,7 +13,7 @@ def main():
                 a.append(b.accept()[0])
             else:
                 try:
-                    c = b.receive(1 << 12)  # sent message
+                    c = b.recv(1 << 12)  # sent message
                 except socket.error:
                     b.shutdown(socket.SHUT_RDWR)
                     b.close()

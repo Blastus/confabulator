@@ -27,8 +27,8 @@ import tkinter.messagebox
 import traceback
 from tkinter.constants import *
 
-import client.threadbox as thread_box
-from client.safetkinter import *
+import client.thread_box as thread_box
+from client.gui import *
 
 APP_TITLE = 'Confabulator Client 1.1'
 
@@ -58,7 +58,7 @@ class ConfabulatorClient(Frame):
         self.send_area = Entry(self)
         self.send_area.bind('<Return>', self.send)
         self.send_area.grid(row=1, column=0, sticky=EW)
-        Sizegrip(self).grid(row=1, column=1, sticky=SE)
+        SizeGrip(self).grid(row=1, column=1, sticky=SE)
         self.send_area.focus_set()
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -166,7 +166,7 @@ def thread(entry_point, *args, **kwargs):
     _thread.start_new_thread(debug, (entry_point,) + args, kwargs)
 
 
-class Prompt(Toplevel):
+class Prompt(TopLevel):
     """Prompt(master, callback) -> Prompt instance"""
 
     def __init__(self, master, callback):
@@ -216,7 +216,7 @@ class Prompt(Toplevel):
                         message=connection.args[0]).show()
 
 
-class Status(Toplevel):
+class Status(TopLevel):
     """Status(master, callback, host) -> Status instance"""
 
     def __init__(self, master, callback, host):
@@ -230,7 +230,7 @@ class Status(Toplevel):
                                       master.winfo_rooty() + 50))
         Label(self, text='Trying to connect to address ...') \
             .grid(sticky=W, padx=40, pady=5)
-        indicator = Progressbar(self, orient=HORIZONTAL,
+        indicator = ProgressBar(self, orient=HORIZONTAL,
                                 mode='indeterminate', maximum=30)
         indicator.grid(sticky=EW, padx=40, pady=5)
         indicator.start()
@@ -259,7 +259,7 @@ class Status(Toplevel):
         self.destroy(result)
 
 
-class Option(Toplevel):
+class Option(TopLevel):
     """Option(master, connection) -> Option instance"""
 
     response = ''
@@ -315,7 +315,10 @@ class Option(Toplevel):
     @thread_box.MetaBox.thread
     def send(self, value):
         """Send a properly encoded string over the connection."""
-        self.connection.sendall(value.encode() + b'\r\n')
+        try:
+            self.connection.sendall(value.encode() + b'\r\n')
+        except ConnectionAbortedError:
+            pass
 
     @thread_box.MetaBox.thread
     def receive(self):
