@@ -174,7 +174,7 @@ class Handler(abc.ABC):
     def save(cls, directory):
         """Generically save static variables to directory."""
         for name in filter(str.isupper, dir(cls)):
-            path = '{}.{}.dat'.format(cls.__name__, name)
+            path = f'{cls.__name__}.{name}.dat'
             with open(os.path.join(directory, path), 'wb') as file:
                 pickle.dump(getattr(cls, name), file, pickle.HIGHEST_PROTOCOL)
 
@@ -261,7 +261,7 @@ class OutsideMenu(Handler):
                 account = cls.ACCOUNTS[name]
                 with account.data_lock:
                     account.messages.append(Message(source, text))
-                event = '[EVENT] {} has sent you a message.'.format(source)
+                event = f'[EVENT] {source} has sent you a message.'
                 account.broadcast(event)
                 return True
             else:
@@ -511,8 +511,7 @@ class InsideMenu(Handler):
                 lambda message: message.new, self.client.account.messages
             ))
             contacts = list(self.client.account.contacts)
-        args = new, ('s', '')[new == 1]
-        self.client.print('You have {} new message{}.'.format(*args))
+        self.client.print(f'You have {new} new message{("s", "")[new == 1]}.')
         online = 0
         with OutsideMenu.data_lock:
             for name in contacts:
@@ -522,8 +521,10 @@ class InsideMenu(Handler):
                         if account.online:
                             online += 1
         total = len(contacts)
-        args = online, total, ('s', '')[total == 1], ('are', 'is')[online == 1]
-        self.client.print('{} of your {} friend{} {} online.'.format(*args))
+        self.client.print(f'{online} of your '
+                          f'{total} friend'
+                          f'{("s", "")[total == 1]} '
+                          f'{("are", "is")[online == 1]} online.')
 
     # These are additional commands this handler recognizes.
 
@@ -678,7 +679,7 @@ class Client:
 
     def print(self, *value, sep=' ', end='\n'):
         """Format arguments and send resulting string to client."""
-        self.send('{}{}'.format(sep.join(map(str, value)), end).encode())
+        self.send(f'{sep.join(map(str, value))}{end}'.encode())
 
 
 class Stack(threading.Thread):
@@ -842,11 +843,10 @@ class Account:
             if status:
                 for index, name in enumerate(contacts):
                     filler = ('FF', 'N')[OutsideMenu.is_online(name)]
-                    args = index + 1, name, filler
-                    client.print('({}) {} [O{}line]'.format(*args))
+                    client.print(f'({index + 1}) {name} [O{filler}line]')
             else:
                 for index, name in enumerate(contacts):
-                    client.print('({}) {}'.format(index + 1, name))
+                    client.print(f'({index + 1}) {name}')
         else:
             client.print('Contact list is empty.')
         return contacts
@@ -863,13 +863,13 @@ class Account:
             for index, data in enumerate(messages):
                 if status:
                     filler = (' [read]', ' [Unread]')[data.new]
-                args = index + 1, data.source, filler
-                client.print('Message {} from {}{}:'.format(*args))
+                client.print(f'Message {index + 1} '
+                             f'from {data.source}{filler}:')
                 text = data.message.replace('\n', ' ')
                 if len(text) > length:
-                    client.print('    {}...'.format(text[:length]))
+                    client.print(f'    {text[:length]}...')
                 else:
-                    client.print('    {}'.format(text))
+                    client.print(f'    {text}')
         else:
             client.print('There are no messages.')
         return messages
@@ -922,8 +922,8 @@ class AdminConsole(Handler):
         """View a list of all current channels."""
         names = InsideMenu.get_channel_names()
         if names:
-            s = len(names) == 1 and ' ' or 's '
-            self.client.print('Channel{}currently in existence:'.format(s))
+            self.client.print(f'Channel{len(names) == 1 and " " or "s "}'
+                              f'currently in existence:')
             for name in names:
                 self.client.print('   ', name)
         else:
@@ -985,7 +985,7 @@ class AdminConsole(Handler):
             with OutsideMenu.data_lock:
                 account_list = list(OutsideMenu.ACCOUNTS.keys())
         for index, address in enumerate(account_list):
-            self.client.print('({}) {}'.format(index + 1, address))
+            self.client.print(f'({index + 1}) {address}')
 
     def ban_add(self, args):
         """Add an address to the list of those banned."""
@@ -1037,7 +1037,7 @@ class AdminConsole(Handler):
                 address_list = list(BanFilter.BLOCKED)
         if address_list:
             for index, address in enumerate(address_list):
-                self.client.print('({}) {}'.format(index + 1, address))
+                self.client.print(f'({index + 1}) {address}')
         else:
             self.client.print('No one is in the ban list.')
 
@@ -1073,8 +1073,8 @@ class AdminConsole(Handler):
                 client.print(message)
                 client.close(True)
                 count += 1
-        args = count, ('s were', ' was')[count == 1]
-        self.client.print('{} sleeper{} disconnected.'.format(*args))
+        self.client.print(f'{count} sleeper'
+                          f'{("s were", " was")[count == 1]} disconnected.')
 
     def get_account_name(self):
         """Display accounts and get name for one of them."""
@@ -1135,8 +1135,8 @@ class AccountEditor(Handler):
         if attr == 'admin':
             with account.data_lock:
                 admin = account.administrator = not account.administrator
-            args = self.name, ('not ', '')[admin]
-            self.client.print('{} is {}an administrator now.'.format(*args))
+            self.client.print(f'{self.name} is {("not ", "")[admin]}'
+                              f'an administrator now.')
         elif attr == 'password':
             word = args[1] if len(args) > 1 else self.client.input('Password:')
             with account.data_lock:
@@ -1157,7 +1157,7 @@ class AccountEditor(Handler):
     # noinspection PyUnusedLocal
     def do_info(self, args):
         """Show information about the current account."""
-        self.client.print('About account "{}":'.format(self.name))
+        self.client.print(f'About account "{self.name}":')
         account = self.account
         with account.data_lock:
             self.client.print('Admin    =', account.administrator)
@@ -1178,7 +1178,7 @@ class AccountEditor(Handler):
         attr = args[0] if args else self.client.input('Contacts or messages?')
         account = self.account
         if attr == 'contacts':
-            self.client.print("{}'s contact list:".format(self.name))
+            self.client.print(f"{self.name}'s contact list:")
             account.show_contacts(self.client, False)
         elif attr == 'messages':
             self.client.print('First 70 bytes of each message:')
@@ -1667,8 +1667,8 @@ class ChannelServer(Handler):
             if channel_name is None:
                 client.print('This channel has been permanently closed.')
                 return
-            args = client.name, channel_name
-            message = '{} has invited you to channel {}.'.format(*args)
+            message = f'{client.name} has invited you to channel ' \
+                      f'{channel_name}.'
             if self.password:
                 message += '\n\nUse this to get in: ' + repr(self.password)
             if OutsideMenu.deliver_message(client.name, name, message):
@@ -1683,15 +1683,16 @@ class ChannelServer(Handler):
         client = self.may_whisper(name)
         if client is None:
             return OutsideMenu.deliver_message(self.client.name, name, message)
-        client.print('({}) {}'.format(self.client.name, message))
+        client.print(f'({self.client.name}) {message}')
         return True
 
     def show_status(self):
         """Show how many people are connected to the channel."""
         with self.data_lock:
             connected = len(self.connected_clients)
-        args = connected, ('people are', 'person is')[connected == 1]
-        self.client.print('{} {} connected.'.format(*args))
+        self.client.print(f'{connected} '
+                          f'{("people are", "person is")[connected == 1]} '
+                          f'connected.')
 
     def setup_buffer_size(self):
         """Allow the client to set the buffer size."""
@@ -1982,7 +1983,7 @@ class ChannelLine:
 
     def echo(self, client):
         """Print a formatted line to the client."""
-        client.print('[{}] {}'.format(self.source, self.message))
+        client.print(f'[{self.source}] {self.message}')
 
 
 class ContactManager(Handler):
@@ -2418,14 +2419,14 @@ class Expression(abc.ABC):
     def __repr__(self):
         """Provide a useful representation of the expression object."""
         kind = type(self).__name__
-        private = '_{}__'.format(kind)
+        private = f'_{kind}__'
         args = []
         for name in self.__dict__:
             if name.startswith(private):
                 value = self.__dict__[name]
                 name = name[len(private):]
-                args.append('{}={!r}'.format(name, value))
-        return '{}({})'.format(kind, ', '.join(args))
+                args.append(f'{name}={value!r}')
+        return f'{kind}({", ".join(args)})'
 
     @abc.abstractmethod
     def evaluate(self, dictionary):
@@ -2621,14 +2622,14 @@ class Expression2(abc.ABC):
     def __repr__(self):
         """Return a representation of this object."""
         kind = type(self).__name__
-        private = '_{}__'.format(kind)
+        private = f'_{kind}__'
         args = []
         for name in vars(self):
             if name.startswith(private):
                 key = name[len(private):]
                 value = getattr(self, name)
-                args.append('{}={!r}'.format(key, value))
-        return '{}({})'.format(kind, ', '.join(args))
+                args.append(f'{key}={value!r}')
+        return f'{kind}({", ".join(args)})'
 
     @abc.abstractmethod
     def evaluate(self, bindings):

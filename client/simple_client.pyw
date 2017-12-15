@@ -154,8 +154,9 @@ class Dialog(TopLevel):
             self.initial_focus = self
         self.protocol('WM_DELETE_WINDOW', self.cancel)
         if self.parent is not None:
-            self.geometry('+{}+{}'.format(parent.winfo_rootx() + 50,
-                                          parent.winfo_rooty() + 50))
+            x = parent.winfo_rootx() + 50
+            y = parent.winfo_rooty() + 50
+            self.geometry(f'+{x}+{y}')
         self.deiconify()
         self.initial_focus.focus_set()
         try:
