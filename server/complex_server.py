@@ -29,8 +29,11 @@ import socket
 import sys
 import textwrap
 import threading
+import time
 import traceback
 import weakref
+
+import server.timeout as timeout
 
 # Save source code in a global variable.
 
@@ -2302,7 +2305,7 @@ class MathExpressionEvaluator(Handler):
             try:
                 self.run(line, local)
             except Exception as error:
-                self.client.print(error.args[0])
+                self.client.print(type(error).__name__, list(error.args))
 
     def run(self, line, local):
         """Execute the line using the local storage."""
@@ -2487,43 +2490,53 @@ class Operation(Expression):
             return value
         x = self.__left.evaluate(dictionary)
         y = self.__right.evaluate(dictionary)
-        if self.__op == '+':
+        # Allow operations to run for a limited time.
+        engine = timeout.set_timeout(5)(self.run_operation)
+        engine(self.__op, x, y)
+        while engine.ready is False:
+            time.sleep(0.1)
+        return engine.value
+
+    @staticmethod
+    def run_operation(operation, x, y):
+        """Execute a switch that performs the work of an operation."""
+        if operation == '+':
             return x + y
-        if self.__op == '-':
+        if operation == '-':
             return x - y
-        if self.__op == '*':
+        if operation == '*':
             return x * y
-        if self.__op == '/':
+        if operation == '/':
             return x / y
-        if self.__op == '//':
+        if operation == '//':
             return x // y
-        if self.__op == '%':
+        if operation == '%':
             return x % y
-        if self.__op == '**':
+        if operation == '**':
             return x ** y
-        if self.__op == '^':
+        if operation == '^':
             return float(int(x) ^ int(y))
-        if self.__op == 'and':
+        if operation == 'and':
             return x and y
-        if self.__op == '&':
+        if operation == '&':
             return float(int(x) & int(y))
-        if self.__op == 'or':
+        if operation == 'or':
             return x or y
-        if self.__op == '|':
+        if operation == '|':
             return float(int(x) | int(y))
-        if self.__op == '==':
+        if operation == '==':
             return float(x == y)
-        if self.__op == '!=':
+        if operation == '!=':
             return float(x != y)
-        if self.__op == '>':
+        if operation == '>':
             return float(x > y)
-        if self.__op == '<':
+        if operation == '<':
             return float(x < y)
-        if self.__op == '>=':
+        if operation == '>=':
             return float(x >= y)
-        if self.__op == '<=':
+        if operation == '<=':
             return float(x <= y)
-        raise Exception('Unknown operator: ' + self.__op)
+        raise Exception('Unknown operator: ' + operation)
 
 
 class Print(Expression):
@@ -2578,9 +2591,9 @@ class MathEvaluator2(Handler):
     def tokens(self, string):
         """Build an expression tree by tokenizing expression."""
         evaluator = self._tokens(string)
-        if isinstance(evaluator, Operation2) and \
-                evaluator.symbol == Operation2.ASSIGNMENT:
-            return evaluator
+        if isinstance(evaluator, Operation2):
+            if evaluator.symbol == Operation2.ASSIGNMENT:
+                return evaluator
         return Print2(evaluator, self.client.print)
 
     def _tokens(self, string):
@@ -2675,8 +2688,8 @@ class Operation2(Expression2):
 
     ASSIGNMENT = '->'
     OPERATORS = {ASSIGNMENT: lambda a, b: None,
-                 '&&': lambda a, b: a and b,
-                 '||': lambda a, b: a or b,
+                 '&&': operator.and_,
+                 '||': operator.or_,
                  '+': operator.add,
                  '-': operator.sub,
                  '*': operator.mul,
@@ -2719,7 +2732,17 @@ class Operation2(Expression2):
             raise SyntaxError(self.__symbol)
         a = self.__left.evaluate(bindings)
         b = self.__right.evaluate(bindings)
-        return self.OPERATORS[self.__symbol](a, b)
+        # Allow operations to run for a limited time.
+        engine = timeout.set_timeout(5)(self.run_operation)
+        engine(self.__symbol, a, b)
+        while engine.ready is False:
+            time.sleep(0.1)
+        return engine.value
+
+    @staticmethod
+    def run_operation(symbol, a, b):
+        """Execute a dictionary search to perform the work of an operation."""
+        return Operation2.OPERATORS[symbol](a, b)
 
     __operators = sorted(OPERATORS, key=len, reverse=True)
 
