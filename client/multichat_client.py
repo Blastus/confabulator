@@ -1,11 +1,12 @@
 #! /usr/bin/env python3
-from safetkinter import *
-from tkinter.constants import *
 import socket
 import sys
+from tkinter.constants import *
 
-class MultichatClient(Frame):
+from client.safetkinter import *
 
+
+class ConfabulatorClient(Frame):
     after_handle = None
 
     def __init__(self, master, remote_host):
@@ -14,27 +15,27 @@ class MultichatClient(Frame):
                                          wrap=WORD, state=DISABLED)
         self.message_area.grid(sticky=NSEW, columnspan=2)
         self.send_area = Entry(self)
-        self.send_area.bind('<Return>', self.keyPressed)
+        self.send_area.bind('<Return>', self.key_pressed)
         self.send_area.grid(sticky=EW)
-        b = Button(self, text='Send', command=self.mouseClicked)
+        b = Button(self, text='Send', command=self.mouse_clicked)
         b.grid(row=1, column=1)
         self.send_area.focus_set()
         try:
             self.remote = socket.create_connection((remote_host, 8989))
         except socket.gaierror:
-            print('Could not find host {}.'.format(remote_host))
+            print(f'Could not find host {remote_host}.')
         except socket.error:
-            print('Could not connect to host {}.'.format(remote_host))
+            print(f'Could not connect to host {remote_host}.')
         else:
             self.remote.setblocking(False)
-            self.after_handle = self.after_idle(self.dataready)
+            self.after_handle = self.after_idle(self.data_ready)
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
     @classmethod
     def main(cls, args):
         root = Tk()
-        root.title('MultichatClient version 1.0')
+        root.title('ConfabulatorClient version 1.0')
         m = cls(root, args[0])
         m.grid(sticky=NSEW)
         root.grid_rowconfigure(0, weight=1)
@@ -42,9 +43,9 @@ class MultichatClient(Frame):
         root.mainloop()
         return 1
 
-    def dataready(self):
+    def data_ready(self):
         try:
-            s = self.remote.recv(1 << 12).decode()
+            s = self.remote.receive(1 << 12).decode()
         except socket.error:
             pass
         else:
@@ -52,18 +53,19 @@ class MultichatClient(Frame):
             self.message_area.insert(END, s)
             self.message_area['state'] = DISABLED
             self.message_area.see(END)
-        self.after_handle = self.after(100, self.dataready)
+        self.after_handle = self.after(100, self.data_ready)
 
     def destroy(self):
         if self.after_handle:
             self.after_cancel(self.after_handle)
         super().destroy()
 
-    def mouseClicked(self, e=None):
+    def mouse_clicked(self, _=None):
         self.remote.sendall(self.send_area.get().encode() + b'\r\n')
         self.send_area.delete(0, END)
 
-    keyPressed = mouseClicked
+    key_pressed = mouse_clicked
+
 
 if __name__ == '__main__':
-    sys.exit(MultichatClient.main(sys.argv[1:]))
+    sys.exit(ConfabulatorClient.main(sys.argv[1:]))

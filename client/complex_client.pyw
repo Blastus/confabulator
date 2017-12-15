@@ -1,42 +1,46 @@
 #! /usr/bin/env python3
-"""Provide a GUI for easy interactions with Multichat servers.
+"""Provide a GUI for easy interactions with Confabulator servers.
 
-This program provides a simple way to connect to a Multichat server, send
+This program provides a simple way to connect to a Confabulator server, send
 and receive text, and automatically discover menus the server may support."""
 
-__author__ = 'Stephen "Zero" Chappell <Noctis.Skytower@gmail.com>'
-__date__ = '11 October 2012'
-__version__ = 1, 0, 0
+__author__ = 'Stephen "Zero" Chappell ' \
+             '<stephen.paul.chappell@atlantis-zero.net>'
+__date__ = '15 December 2017'
+__version__ = 1, 0, 1
+__all__ = [
+    'ConfabulatorClient',
+    'Entry',
+    'ScrolledText',
+    'debug',
+    'thread',
+    'Prompt'
+]
 
-################################################################################
-
-from safetkinter import *
-from tkinter.constants import *
-import tkinter.messagebox
+import _thread
+import json
+import logging
+import pathlib
 import socket
 import sys
-import os
-import logging
+import tkinter.messagebox
 import traceback
-import _thread
-import threadbox
-import json
+from tkinter.constants import *
 
-################################################################################
+import client.threadbox as thread_box
+from client.safetkinter import *
 
-APP_TITLE = 'Multichat Client 1.1'
+APP_TITLE = 'Confabulator Client 1.1'
 
-################################################################################
 
-class MultichatClient(Frame):
-
-    "MultichatClient(master) -> MultichatClient instance"
+class ConfabulatorClient(Frame):
+    """ConfabulatorClient(master) -> ConfabulatorClient instance"""
 
     after_handle = None
 
     @classmethod
     def main(cls):
-        "Create a GUI root and demonstrate the MultichatClient widget."
+        """Create a GUI root and demonstrate the ConfabulatorClient widget."""
         root = Tk()
         root.title(APP_TITLE)
         root.minsize(670, 370)
@@ -46,7 +50,7 @@ class MultichatClient(Frame):
         root.mainloop()
 
     def __init__(self, master):
-        "Initialize the MultichatClient instance with its internal widgets."
+        """Initialize the ConfabulatorClient instance with its widgets."""
         super().__init__(master)
         self.message_area = ScrolledText(self, width=81, height=21,
                                          wrap=WORD, state=DISABLED)
@@ -59,21 +63,22 @@ class MultichatClient(Frame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
         self.after_idle(self.setup_start)
+        self.options = self.last_x = self.last_y = None
 
     def destroy(self):
-        "Cancel any updates before destructing this widget."
+        """Cancel any updates before destructing this widget."""
         if self.after_handle:
             self.after_cancel(self.after_handle)
         super().destroy()
 
     def setup_start(self):
-        "Begin by creating a prompt window and registering a callback."
+        """Begin by creating a prompt window and registering a callback."""
         root = self._root()
         root.withdraw()
         Prompt(root, self.setup_stop)
 
     def setup_stop(self, connection):
-        "Close the widget if there was no connection; else begin chatting."
+        """Close the widget if there was no connection; else begin chatting."""
         root = self._root()
         if connection:
             self.options = Option(root, connection)
@@ -85,7 +90,7 @@ class MultichatClient(Frame):
             root.destroy()
 
     def refresh(self):
-        "Try to update the message area ten times a second."
+        """Try to update the message area ten times a second."""
         try:
             s = self.options.input()
         except socket.error:
@@ -97,81 +102,75 @@ class MultichatClient(Frame):
             self.message_area.see(END)
         self.after_handle = self.after(100, self.refresh)
 
+    # noinspection PyUnusedLocal
     def send(self, event):
-        "Send a message across the connection and clear the input area."
+        """Send a message across the connection and clear the input area."""
         self.options.print(self.send_area.get())
         self.send_area.delete(0, END)
 
     def move_options(self, event):
-        "Move the Option window with the root as the root is adjusted."
+        """Move the Option window with the root as the root is adjusted."""
         self.options.geometry('+{}+{}'.format(
             self.options.winfo_x() + event.x - self.last_x,
             self.options.winfo_y() + event.y - self.last_y))
         self.last_x, self.last_y = event.x, event.y
 
-################################################################################
 
 class Entry(Entry):
-
-    "Entry(master, **kw) -> Entry instance"
+    """Entry(master, **kw) -> Entry instance"""
 
     def __init__(self, master, **kw):
-        "Initialize the Entry widget with custom default bindings."
+        """Initialize the Entry widget with custom default bindings."""
         super().__init__(master, **kw)
         self.bind('<Control-a>', self.handle_control_a)
         self.bind('<Control-/>', lambda event: 'break')
 
     @staticmethod
     def handle_control_a(event):
-        "Select all of the text in the widget."
+        """Select all of the text in the widget."""
         event.widget.selection_range(0, END)
         return 'break'
 
-################################################################################
 
 class ScrolledText(ScrolledText):
-
-    "ScrolledText(master, **kw) -> ScrolledText instance"
+    """ScrolledText(master, **kw) -> ScrolledText instance"""
 
     def __init__(self, master, **kw):
-        "Initialize the ScrolledText widget with custom default bindings."
+        """Initialize the ScrolledText widget with custom default bindings."""
         super().__init__(master, **kw)
         self.bind('<Control-a>', self.handle_control_a)
         self.bind('<Control-/>', lambda event: 'break')
 
     @staticmethod
     def handle_control_a(event):
-        "Select all of the text in the widget."
+        """Select all of the text in the widget."""
         event.widget.tag_add(SEL, 1.0, END + '-1c')
         return 'break'
 
-################################################################################
 
-def debug(function, *args, **kwargs):
-    "Run a function with debugging enabled (automatic exception logging)."
+def debug(entry_point, *args, **kwargs):
+    """Run a function with debugging enabled (automatic exception logging)."""
     try:
-        return function(*args, **kwargs)
+        return entry_point(*args, **kwargs)
     except Exception:
-        basename = os.path.basename(sys.argv[0])
-        filename = os.path.splitext(basename)[0] + '.log'
-        logging.basicConfig(filename=filename)
-        etype, value, tb = sys.exc_info()
-        lines = traceback.format_exception(etype, value, tb.tb_next)
+        destination = pathlib.Path(sys.argv[0]).with_suffix('.log')
+        logging.basicConfig(filename=destination)
+        exception_type, value, tb = sys.exc_info()
+        lines = traceback.format_exception(exception_type, value, tb.tb_next)
         logging.error(''.join(lines))
         raise
 
-def thread(function, *args, **kwargs):
-    "Run a function in a new thread of execution with debug support."
-    _thread.start_new_thread(debug, (function,) + args, kwargs)
 
-################################################################################
+def thread(entry_point, *args, **kwargs):
+    """Run a function in a new thread of execution with debug support."""
+    _thread.start_new_thread(debug, (entry_point,) + args, kwargs)
+
 
 class Prompt(Toplevel):
-
-    "Prompt(master, callback) -> Prompt instance"
+    """Prompt(master, callback) -> Prompt instance"""
 
     def __init__(self, master, callback):
-        "Initialize the Prompt window with its widgets."
+        """Initialize the Prompt window with its widgets."""
         super().__init__(master)
         self.callback = callback
         self.response = None
@@ -180,7 +179,7 @@ class Prompt(Toplevel):
         self.protocol('WM_DELETE_WINDOW', self.destroy)
         self.geometry('+{}+{}'.format(master.winfo_rootx() + 50,
                                       master.winfo_rooty() + 50))
-        Label(self, text="What is the server's IP address?")\
+        Label(self, text="What is the server's IP address?") \
             .grid(padx=40, pady=5)
         self.address = Entry(self)
         self.address.grid(padx=40, pady=5)
@@ -190,18 +189,21 @@ class Prompt(Toplevel):
         self.bind('<Return>', self.connect_start)
         self.bind('<Escape>', self.destroy)
 
+    # noinspection PyUnusedLocal
     def destroy(self, event=None):
-        "Run the callback with the collected response and destruct."
+        """Run the callback with the collected response and destruct."""
         self.master.after_idle(self.callback, self.response)
         super().destroy()
 
+    # noinspection PyUnusedLocal
     def connect_start(self, event=None):
-        "Create a Status window to handle the connection process."
+        """Create a Status window to handle the connection process."""
         self.withdraw()
+        # noinspection PyTypeChecker
         Status(self, self.connect_stop, self.address.get())
 
     def connect_stop(self, connection):
-        "Collect the response from the Status window and proceed."
+        """Collect the response from the Status window and proceed."""
         if isinstance(connection, socket.socket):
             self.response = connection
             self.destroy()
@@ -213,14 +215,12 @@ class Prompt(Toplevel):
                         type=tkinter.messagebox.OK,
                         message=connection.args[0]).show()
 
-################################################################################
 
 class Status(Toplevel):
-
-    "Status(master, callback, host) -> Status instance"
+    """Status(master, callback, host) -> Status instance"""
 
     def __init__(self, master, callback, host):
-        "Initialize the Status window with its widgets and try connecting."
+        """Initialize the Status window with its widgets and try connecting."""
         super().__init__(master)
         self.callback = callback
         self.title(APP_TITLE)
@@ -228,7 +228,7 @@ class Status(Toplevel):
         self.protocol('WM_DELETE_WINDOW', self.destroy)
         self.geometry('+{}+{}'.format(master.winfo_rootx() + 50,
                                       master.winfo_rooty() + 50))
-        Label(self, text='Trying to connect to address ...')\
+        Label(self, text='Trying to connect to address ...') \
             .grid(sticky=W, padx=40, pady=5)
         indicator = Progressbar(self, orient=HORIZONTAL,
                                 mode='indeterminate', maximum=30)
@@ -237,19 +237,19 @@ class Status(Toplevel):
         thread(self.connect, host)
 
     def destroy(self, result=None):
-        "Send a response back to the Prompt window when finished."
+        """Send a response back to the Prompt window when finished."""
         if not self.destroyed:
             self.master.after_idle(self.callback, result)
             super().destroy()
 
     @property
     def destroyed(self):
-        "Find out if this window has already been destroyed."
+        """Find out if this window has already been destroyed."""
         return self._tclCommands is None
 
-    @threadbox.MetaBox.thread
+    @thread_box.MetaBox.thread
     def connect(self, host):
-        "Try connecting to the host using a thread and return the result."
+        """Try connecting to the host using a thread and return the result."""
         try:
             result = socket.create_connection((host, 8989), 10)
         except socket.gaierror:
@@ -258,42 +258,41 @@ class Status(Toplevel):
             result = Exception('Could not connect to host {!r}.'.format(host))
         self.destroy(result)
 
-################################################################################
 
 class Option(Toplevel):
-
-    "Option(master, connection) -> Option instance"
+    """Option(master, connection) -> Option instance"""
 
     response = ''
 
     def __init__(self, master, connection):
-        "Initialize the Option instance with a connection it should handle."
+        """Initialize the Option instance with a connection it will handle."""
         super().__init__(master)
+        self.wm_attributes('-topmost', True)
         connection.setblocking(False)
         self.connection = connection
         self.title('Menu')
         self.resizable(False, False)
         self.protocol('WM_DELETE_WINDOW', self.master.destroy)
         self.geometry('+{}+{}'.format(master.winfo_rootx() +
-                                      master.winfo_width() + 13,
-                                      master.winfo_rooty() - 25))
+                                      master.winfo_width() - 6,
+                                      master.winfo_rooty() - 31))
         self.refreshing = _thread.allocate_lock()
         self.after(200, thread, self.refresh)
 
     def print(self, value):
-        "Try sending a value over the connection."
+        """Try sending a value over the connection."""
         with self.refreshing:
             self.send(value)
             self.after(200, thread, self.refresh)
 
     def input(self):
-        "Try receiving some data from the server."
+        """Try receiving some data from the server."""
         with self.refreshing:
-            return self.recv()
+            return self.receive()
 
-    @threadbox.MetaBox.thread
+    @thread_box.MetaBox.thread
     def refresh(self):
-        "Refresh the menu if appropriate at the time."
+        """Refresh the menu if appropriate at the time."""
         response = self.response.strip()
         if any(response.endswith(suffix) for suffix in
                ('Command:', 'is connected.')):
@@ -301,43 +300,50 @@ class Option(Toplevel):
             self.connection.settimeout(1)
             try:
                 self.send(':__json_help__')
-                commands = json.loads(self.recv().strip())
+                commands = json.loads(self.receive().strip())
             except (ValueError, socket.timeout):
                 commands = None
             self.connection.setblocking(False)
             self.refreshing.release()
             if commands:
                 self.remove_widgets()
-                self.create_widgets(commands,
-                    ':' if response.endswith('is connected.') else '')
+                self.create_widgets(
+                    commands,
+                    ':' if response.endswith('is connected.') else ''
+                )
 
-    @threadbox.MetaBox.thread
+    @thread_box.MetaBox.thread
     def send(self, value):
-        "Send a properly encoded string over the connection."
+        """Send a properly encoded string over the connection."""
         self.connection.sendall(value.encode() + b'\r\n')
 
-    @threadbox.MetaBox.thread
-    def recv(self):
-        "Decode and format incoming data from the connection."
-        self.response = self.connection.recv(1 << 12).decode()\
-                        .replace('\r\n', '\n').replace('\r', '\n')
-        return self.response
+    @thread_box.MetaBox.thread
+    def receive(self):
+        """Decode and format incoming data from the connection."""
+        message = self.connection.recv(1 << 12).decode()
+        correct = message.replace('\r\n', '\n').replace('\r', '\n')
+        self.response = correct
+        return correct
 
     def remove_widgets(self):
-        "Destroy all widgets this window contains."
+        """Destroy all widgets this window contains."""
         for widget in tuple(self.children.values()):
             widget.destroy()
 
     def create_widgets(self, commands, prefix):
-        "Create the buttons and labels that make up the menu."
-        bind = lambda name: lambda: self.print(prefix + name)
+        """Create the buttons and labels that make up the menu."""
         for row, name in enumerate(sorted(commands)):
-            Button(self, text=name, command=bind(name))\
-                .grid(row=row, column=0, padx=2, pady=2)
-            Label(self, text=commands[name])\
-                .grid(row=row, column=1, padx=2, pady=2, sticky=W)
+            Button(self, text=name, command=self.bind(prefix, name)).grid(
+                row=row, column=0, padx=2, pady=2
+            )
+            Label(self, text=commands[name]).grid(
+                row=row, column=1, padx=2, pady=2, sticky=W
+            )
 
-################################################################################
+    def bind(self, prefix, name):
+        """Create a callback that button widgets can use."""
+        return lambda: self.print(prefix + name)
+
 
 if __name__ == '__main__':
-    debug(MultichatClient.main)
+    debug(ConfabulatorClient.main)

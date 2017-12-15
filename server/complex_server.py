@@ -293,14 +293,14 @@ class OutsideMenu(Handler):
         #         self.client.print('''\
         # ===================================
         # Welcome to Confabulator
-        # Python Edition 1.0
+        # Python Edition 1.1
         # ===================================''')
         self.client.print('''\
 /----------------------------\\
 |                            |
-|    Welcome to Confabulator    |
+|   Welcome to Confabulator  |
 |   ======================   |
-|     Python Edition 1.0     |
+|     Python Edition 1.1     |
 |                            |
 \\----------------------------/''')
 

@@ -1,37 +1,40 @@
 #! /usr/bin/env python3
-
-"""Provide a GUI for easy interactions with Multichat servers.
+"""Provide a GUI for easy interactions with Confabulator servers.
 
 This program is an example of a first attempt at implementing a client
-for interacting with a Multichat server through purely graphical means."""
+for interacting with a Confabulator server through purely graphical means."""
 
-__author__ = 'Stephen "Zero" Chappell <Noctis.Skytower@gmail.com>'
-__date__ = '11 October 2012'
-__version__ = 1, 0, 0
+__author__ = 'Stephen "Zero" Chappell ' \
+             '<stephen.paul.chappell@atlantis-zero.net>'
+__date__ = '14 December 2017'
+__version__ = 1, 0, 1
+__all__ = [
+    'SimpleClient',
+    'start_thread',
+    'log_errors',
+    'ConnectionDialog',
+    'ConnectionStatus'
+]
 
-################################################################################
-
-from tkinter.messagebox import *
-from tkinter.constants import *
-from safetkinter import *
-import logging
-import traceback
 import _thread
+import logging
+import pathlib
 import socket
-import os
-import traceback
 import sys
-import threadbox
+import traceback
+from tkinter.constants import *
+from tkinter.messagebox import *
 
-################################################################################
+import client.threadbox as thread_box
+from client.safetkinter import *
+
 
 class SimpleClient(Frame):
-
-    "SimpleClient(master, **kw) -> SimpleClient instance"
+    """SimpleClient(master, **kw) -> SimpleClient instance"""
 
     @classmethod
     def main(cls):
-        "Create a GUI root and demonstrate the SimpleClient widget."
+        """Create a GUI root and demonstrate the SimpleClient widget."""
         root = Tk()
         root.title('Chat Client')
         root.minsize(675, 450)
@@ -44,7 +47,7 @@ class SimpleClient(Frame):
 
     @staticmethod
     def handle_control_a(event):
-        "Process Ctrl-A commands by widget type."
+        """Process Ctrl-A commands by widget type."""
         widget = event.widget
         if isinstance(widget, Text):
             widget.tag_add(SEL, 1.0, END + '-1c')
@@ -54,7 +57,7 @@ class SimpleClient(Frame):
             return 'break'
 
     def __init__(self, master, **kw):
-        "Initialize the SimpleClient instance with the widgets it contains."
+        """Initialize the SimpleClient instance with the widgets it uses."""
         super().__init__(master, **kw)
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -69,61 +72,69 @@ class SimpleClient(Frame):
         # Setup Widgets
         self.output_area['state'] = DISABLED
         self.input_area.bind('<Return>', self.send)
-        self.after_idle(self.connect)
+        self.after_handle = self.after_idle(self.connect)
+        self.connection = None
+
+    def destroy(self):
+        """Destruct the SimpleClient window."""
+        self.after_cancel(self.after_handle)
+        super().destroy()
 
     def connect(self):
-        "Try connecting to a server to begin chatting."
-        self.connection = Connector(self, 'Chat Client').connection
+        """Try connecting to a server to begin chatting."""
+        # noinspection PyTypeChecker
+        self.connection = ConnectionDialog(self, 'Chat Client').connection
         if self.connection is None:
             self._root().destroy()
         else:
             self.connection.setblocking(False)
-            self.after_idle(self.update)
+            self.after_handle = self.after_idle(self.update)
 
     def send(self, event):
-        "Send a message across the connection from the given widget."
+        """Send a message across the connection from the given widget."""
         self.connection.sendall(event.widget.get().encode() + b'\r\n')
         event.widget.delete(0, END)
 
     def update(self):
-        "Update the output area with any incoming messages."
+        """Update the output area with any incoming messages."""
         self.output_area['state'] = NORMAL
         try:
-            self.output_area.insert(END, self.connection.recv(1 << 12).decode())
+            message = self.connection.receive(1 << 12)
         except socket.error:
             pass
         else:
+            self.output_area.insert(END, message.decode())
             self.output_area.see(END)
         finally:
             self.output_area['state'] = DISABLED
-        self.after(100, self.update)
+            self.after_handle = self.after(100, self.update)
 
-################################################################################
 
-def start_thread(function, *args, **kwargs):
-    "Start a new thread of execution while logging any errors."
-    _thread.start_new_thread(log_errors, (function, args, kwargs))
+def start_thread(entry_point, *args, **kwargs):
+    """Start a new thread of execution while logging any errors."""
+    _thread.start_new_thread(log_errors, (entry_point, args, kwargs))
 
-def log_errors(function, args=(), kwargs={}):
-    "Execute a function with its arguments and log any exceptions."
+
+def log_errors(entry_point, args=(), kwargs=None):
+    """Execute a function with its arguments and log any exceptions."""
+    if kwargs is None:
+        kwargs = {}
+    # noinspection PyPep8,PyBroadException
     try:
-        function(*args, **kwargs)
+        entry_point(*args, **kwargs)
     except SystemExit:
         pass
     except:
-        basename = os.path.basename(sys.argv[0])
-        filename = os.path.splitext(basename)[0] + '.log'
-        logging.basicConfig(filename=filename)
+        destination = pathlib.Path(sys.argv[0]).with_suffix('.log')
+        logging.basicConfig(filename=destination)
         logging.error(traceback.format_exc())
 
-################################################################################
 
-class Dialog(Toplevel): # Copies tkinter.simpledialog.Dialog
-
-    "Dialog(parent, title=None) -> Dialog instance"
+class Dialog(Toplevel):
+    """Dialog(parent, title=None) -> Dialog instance"""
 
     def __init__(self, parent, title=None):
-        "Initialize a Dialog window that takes focus away from the parent."
+        """Initialize a Dialog window that takes focus away from the parent."""
         super().__init__(parent)
         self.withdraw()
         if parent.winfo_viewable():
@@ -153,16 +164,16 @@ class Dialog(Toplevel): # Copies tkinter.simpledialog.Dialog
             self.wait_window(self)
 
     def destroy(self):
-        "Destruct the Dialog window."
+        """Destruct the Dialog window."""
         self.initial_focus = None
         super().destroy()
 
     def body(self, master):
-        "Create the body of this Dialog window."
+        """Create the body of this Dialog window."""
         pass
 
     def buttonbox(self):
-        "Create the standard buttons and Dialog bindings."
+        """Create the standard buttons and Dialog bindings."""
         box = Frame(self)
         w = Button(box, text='OK', width=10, command=self.ok, default=ACTIVE)
         w.grid(row=0, column=0, padx=5, pady=5)
@@ -172,8 +183,9 @@ class Dialog(Toplevel): # Copies tkinter.simpledialog.Dialog
         self.bind('<Escape>', self.cancel)
         box.grid()
 
+    # noinspection PyUnusedLocal
     def ok(self, event=None):
-        "Validate and apply the changes made by this Dialog."
+        """Validate and apply the changes made by this Dialog."""
         if not self.validate():
             self.initial_focus.focus_set()
             return
@@ -184,28 +196,31 @@ class Dialog(Toplevel): # Copies tkinter.simpledialog.Dialog
         finally:
             self.cancel()
 
+    # noinspection PyUnusedLocal
     def cancel(self, event=None):
-        "Close the Dialong window and return to its parent."
+        """Close the Dialog window and return to its parent."""
         if self.parent is not None:
             self.parent.focus_set()
         self.destroy()
 
     def validate(self):
-        "Verify that the Dialog is in a valid state."
+        """Verify that the Dialog is in a valid state."""
         return True
 
     def apply(self):
-        "Make any changes the Dialog wishes to accomplish."
+        """Make any changes the Dialog wishes to accomplish."""
         pass
 
-################################################################################
 
-class Connector(Dialog):
+class ConnectionDialog(Dialog):
+    """ConnectionDialog(parent, title=None) -> ConnectionDialog instance"""
 
-    "Connector(parent, title=None) -> Connector instance"
+    def __init__(self, parent, title=None):
+        self.connection = self.prompt = self.address = None
+        super().__init__(parent, title)
 
     def body(self, master):
-        "Customize the Dialog window with some custom widgets."
+        """Customize the Dialog window with some custom widgets."""
         self.connection = None
         self.resizable(False, False)
         # Build Widgets
@@ -216,7 +231,7 @@ class Connector(Dialog):
         self.address.grid(sticky=W, padx=30)
 
     def buttonbox(self):
-        "Redefine the buttons at the bottom of the window."
+        """Redefine the buttons at the bottom of the window."""
         w = Button(self, text='Connect', width=10, command=self.ok,
                    default=ACTIVE)
         w.grid(sticky=E, padx=5, pady=5)
@@ -224,8 +239,9 @@ class Connector(Dialog):
         self.bind('<Escape>', self.cancel)
 
     def validate(self):
-        "Ask a Consumator to make a connection with the given address."
-        c = Consumator(self, 'Chat Client', (self.address.get(), 8989))
+        """Have ConnectionStatus make a connection with the given address."""
+        # noinspection PyTypeChecker
+        c = ConnectionStatus(self, 'Chat Client', (self.address.get(), 8989))
         if c.connection is None:
             Message(self, icon=WARNING, type=OK, title='Warning',
                     message='Could not connect to address!').show()
@@ -233,19 +249,18 @@ class Connector(Dialog):
         self.connection = c.connection
         return True
 
-################################################################################
 
-class Consumator(Dialog):
-
-    "Consumator(parent, title, address) -> Consumator instance"
+class ConnectionStatus(Dialog):
+    """ConnectionStatus(parent, title, address) -> ConnectionStatus instance"""
 
     def __init__(self, parent, title, address):
-        "Initialize the Consumator with the server's address."
+        """Initialize the ConnectionStatus with the server's address."""
         self.server_address = address
+        self.connection = self.message = self.progress = None
         super().__init__(parent, title)
 
     def body(self, master):
-        "Create the widgets for this Dialog and start the connection process."
+        """Create the Dialog's widgets and start the connection process."""
         self.connection = None
         self.resizable(False, False)
         # Build Widgets
@@ -262,26 +277,25 @@ class Consumator(Dialog):
         self.after_idle(self.poll, result)
 
     def buttonbox(self):
-        "Cancel the creation of the buttons at the bottom of this Dialog."
+        """Cancel the creation of the buttons at the bottom of this Dialog."""
         pass
 
-    @threadbox.MetaBox.thread
+    @thread_box.MetaBox.thread
     def connect(self, result):
-        "Try connecting to the server address that was given."
+        """Try connecting to the server address that was given."""
         try:
             result.append(socket.create_connection(self.server_address, 10))
         except socket.timeout:
             result.append(None)
 
     def poll(self, result):
-        "Find out if the any connection information is available yet."
+        """Find out if the any connection information is available yet."""
         if result:
             self.connection = result[0]
             self.cancel()
         else:
             self.after(100, self.poll, result)
 
-################################################################################
 
 if __name__ == '__main__':
     log_errors(SimpleClient.main)
