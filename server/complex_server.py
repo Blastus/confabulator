@@ -1398,15 +1398,16 @@ class ChannelServer(Handler):
         if protected is not None:
             if protected:
                 client.print(name, 'cannot be banned.')
-            with self.data_lock:
-                will_ban = name not in self.banned
-                if will_ban:
-                    self.banned.append(name)
-            if will_ban:
-                self.do_kick([name], False)
-                client.print(name, 'has been banned.')
             else:
-                client.print(name, 'was already been banned.')
+                with self.data_lock:
+                    will_ban = name not in self.banned
+                    if will_ban:
+                        self.banned.append(name)
+                if will_ban:
+                    self.do_kick([name], False)
+                    client.print(name, 'has been banned.')
+                else:
+                    client.print(name, 'was already been banned.')
 
     def add_line(self, name, line):
         """Add a line to the channel buffer."""
