@@ -13,14 +13,19 @@ def main():
                 a.append(b.accept()[0])
             else:
                 try:
-                    c = b.recv(1 << 12)  # sent message
+                    c = b.receive(1 << 12)  # sent message
                 except socket.error:
                     b.shutdown(socket.SHUT_RDWR)
                     b.close()
                     a.remove(b)
                 else:
                     for d in (d for d in a[1:] if d is not b):  # message sink
-                        d.sendall(c)
+                        try:
+                            d.sendall(c)
+                        except ConnectionAbortedError:
+                            d.shutdown(socket.SHUT_RDWR)
+                            d.close()
+                            a.remove(d)
 
 
 if __name__ == '__main__':
