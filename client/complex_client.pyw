@@ -27,8 +27,7 @@ import tkinter.messagebox
 import traceback
 from tkinter.constants import *
 
-import client.thread_box as thread_box
-from client.gui import *
+from client.safe_tkinter import *
 
 APP_TITLE = 'Confabulator Client 1.1'
 
@@ -210,10 +209,10 @@ class Prompt(TopLevel):
         else:
             self.deiconify()
             if isinstance(connection, Exception):
-                Message(self, title='Connection Error',
-                        icon=tkinter.messagebox.ERROR,
-                        type=tkinter.messagebox.OK,
-                        message=connection.args[0]).show()
+                MessageBox(self, title='Connection Error',
+                           icon=tkinter.messagebox.ERROR,
+                           type=tkinter.messagebox.OK,
+                           message=connection.args[0]).show()
 
 
 class Status(TopLevel):
@@ -247,7 +246,7 @@ class Status(TopLevel):
         """Find out if this window has already been destroyed."""
         return self._tclCommands is None
 
-    @thread_box.MetaBox.thread
+    @MetaBox.thread
     def connect(self, host):
         """Try connecting to the host using a thread and return the result."""
         try:
@@ -290,7 +289,7 @@ class Option(TopLevel):
         with self.refreshing:
             return self.receive()
 
-    @thread_box.MetaBox.thread
+    @MetaBox.thread
     def refresh(self):
         """Refresh the menu if appropriate at the time."""
         response = self.response.strip()
@@ -312,7 +311,7 @@ class Option(TopLevel):
                     ':' if response.endswith('is connected.') else ''
                 )
 
-    @thread_box.MetaBox.thread
+    @MetaBox.thread
     def send(self, value):
         """Send a properly encoded string over the connection."""
         try:
@@ -320,7 +319,7 @@ class Option(TopLevel):
         except ConnectionAbortedError:
             pass
 
-    @thread_box.MetaBox.thread
+    @MetaBox.thread
     def receive(self):
         """Decode and format incoming data from the connection."""
         message = self.connection.recv(1 << 12).decode()

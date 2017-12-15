@@ -3,7 +3,7 @@ import socket
 import sys
 from tkinter.constants import *
 
-from client.gui import *
+from client.safe_tkinter import *
 
 
 class ConfabulatorClient(Frame):

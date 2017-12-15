@@ -60,9 +60,7 @@ import tkinter.messagebox
 import tkinter.scrolledtext
 import tkinter.ttk
 
-import client.thread_box as thread_box
-
-tkinter.NoDefaultRoot()
+from . import thread_box
 
 
 @thread_box.MetaBox.thread
