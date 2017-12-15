@@ -109,9 +109,9 @@ class ConfabulatorClient(Frame):
 
     def move_options(self, event):
         """Move the Option window with the root as the root is adjusted."""
-        self.options.geometry('+{}+{}'.format(
-            self.options.winfo_x() + event.x - self.last_x,
-            self.options.winfo_y() + event.y - self.last_y))
+        x = self.options.winfo_x() + event.x - self.last_x
+        y = self.options.winfo_y() + event.y - self.last_y
+        self.options.geometry(f'+{x}+{y}')
         self.last_x, self.last_y = event.x, event.y
 
 
@@ -176,8 +176,9 @@ class Prompt(TopLevel):
         self.title(APP_TITLE)
         self.resizable(False, False)
         self.protocol('WM_DELETE_WINDOW', self.destroy)
-        self.geometry('+{}+{}'.format(master.winfo_rootx() + 50,
-                                      master.winfo_rooty() + 50))
+        x = master.winfo_rootx() + 50
+        y = master.winfo_rooty() + 50
+        self.geometry(f'+{x}+{y}')
         Label(self, text="What is the server's IP address?") \
             .grid(padx=40, pady=5)
         self.address = Entry(self)
@@ -225,8 +226,9 @@ class Status(TopLevel):
         self.title(APP_TITLE)
         self.resizable(False, False)
         self.protocol('WM_DELETE_WINDOW', self.destroy)
-        self.geometry('+{}+{}'.format(master.winfo_rootx() + 50,
-                                      master.winfo_rooty() + 50))
+        x = master.winfo_rootx() + 50
+        y = master.winfo_rooty() + 50
+        self.geometry(f'+{x}+{y}')
         Label(self, text='Trying to connect to address ...') \
             .grid(sticky=W, padx=40, pady=5)
         indicator = ProgressBar(self, orient=HORIZONTAL,
@@ -252,9 +254,9 @@ class Status(TopLevel):
         try:
             result = socket.create_connection((host, 8989), 10)
         except socket.gaierror:
-            result = Exception('Could not find host {!r}.'.format(host))
+            result = Exception(f'Could not find host {host!r}.')
         except socket.error:
-            result = Exception('Could not connect to host {!r}.'.format(host))
+            result = Exception(f'Could not connect to host {host!r}.')
         self.destroy(result)
 
 
@@ -272,9 +274,9 @@ class Option(TopLevel):
         self.title('Menu')
         self.resizable(False, False)
         self.protocol('WM_DELETE_WINDOW', self.master.destroy)
-        self.geometry('+{}+{}'.format(master.winfo_rootx() +
-                                      master.winfo_width() - 6,
-                                      master.winfo_rooty() - 31))
+        x = master.winfo_rootx() + master.winfo_width() - 6
+        y = master.winfo_rooty() - 31
+        self.geometry(f'+{x}+{y}')
         self.refreshing = _thread.allocate_lock()
         self.after(200, thread, self.refresh)
 
