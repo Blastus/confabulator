@@ -7,8 +7,8 @@ expression interpreters, asynchronous communications, and account options."""
 
 __author__ = 'Stephen "Zero" Chappell ' \
              '<stephen.paul.chappell@atlantis-zero.net>'
-__date__ = '14 December 2017'
-__version__ = 1, 0, 1
+__date__ = '18 December 2017'
+__version__ = 1, 0, 2
 __all__ = [
     'main',
     'enum',
@@ -29,7 +29,6 @@ import socket
 import sys
 import textwrap
 import threading
-import time
 import traceback
 import weakref
 
@@ -2490,12 +2489,9 @@ class Operation(Expression):
             return value
         x = self.__left.evaluate(dictionary)
         y = self.__right.evaluate(dictionary)
-        # Allow operations to run for a limited time.
-        engine = timeout.set_timeout(5)(self.run_operation)
-        engine(self.__op, x, y)
-        while engine.ready is False:
-            time.sleep(0.1)
-        return engine.value
+        return timeout.run_with_timeout(
+            5, 0.1, self.run_operation, self.__op, x, y
+        )
 
     @staticmethod
     def run_operation(operation, x, y):
@@ -2732,12 +2728,9 @@ class Operation2(Expression2):
             raise SyntaxError(self.__symbol)
         a = self.__left.evaluate(bindings)
         b = self.__right.evaluate(bindings)
-        # Allow operations to run for a limited time.
-        engine = timeout.set_timeout(5)(self.run_operation)
-        engine(self.__symbol, a, b)
-        while engine.ready is False:
-            time.sleep(0.1)
-        return engine.value
+        return timeout.run_with_timeout(
+            5, 0.1, self.run_operation, self.__symbol, a, b
+        )
 
     @staticmethod
     def run_operation(symbol, a, b):
