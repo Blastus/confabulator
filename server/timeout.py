@@ -6,10 +6,11 @@ finishing, this module provides a set_timeout decorator to wrap functions."""
 
 __author__ = 'Stephen "Zero" Chappell ' \
              '<stephen.paul.chappell@atlantis-zero.net>'
-__date__ = '15 December 2017'
-__version__ = 1, 0, 0
+__date__ = '18 December 2017'
+__version__ = 1, 0, 1
 __all__ = [
-    'set_timeout'
+    'set_timeout',
+    'run_with_timeout'
 ]
 
 import multiprocessing
@@ -20,11 +21,10 @@ DEFAULT_TIMEOUT = 60
 
 
 def set_timeout(limit=None):
-    """Returns a wrapper that provides a timeout API for callers."""
+    """Return a wrapper that provides a timeout API for callers."""
     if limit is None:
         limit = DEFAULT_TIMEOUT
-    if limit <= 0:
-        raise ValueError('limit must be greater than zero')
+    _Timeout.validate_limit(limit)
 
     def wrapper(entry_point):
         return _Timeout(entry_point, limit)
@@ -32,8 +32,17 @@ def set_timeout(limit=None):
     return wrapper
 
 
+def run_with_timeout(limit, polling_interval, entry_point, *args, **kwargs):
+    """Execute a callable object and automatically poll for results."""
+    engine = set_timeout(limit)(entry_point)
+    engine(*args, **kwargs)
+    while engine.ready is False:
+        time.sleep(polling_interval)
+    return engine.value
+
+
 def _target(queue, entry_point, *args, **kwargs):
-    """The module-level target helps with multiprocessing."""
+    """Help with multiprocessing calls by being a top-level module function."""
     # noinspection PyPep8,PyBroadException
     try:
         queue.put((True, entry_point(*args, **kwargs)))
@@ -66,7 +75,7 @@ class _Timeout:
         self.__timeout = time.monotonic() + self.__limit
 
     def cancel(self):
-        """Terminates execution if possible."""
+        """Terminate execution if possible."""
         if self.__process.is_alive():
             self.__process.terminate()
 
@@ -99,6 +108,11 @@ class _Timeout:
 
     @limit.setter
     def limit(self, value):
+        self.validate_limit(value)
+        self.__limit = value
+
+    @staticmethod
+    def validate_limit(value):
+        """Verify that the limit's value is not too low."""
         if value <= 0:
             raise ValueError('limit must be greater than zero')
-        self.__limit = value
