@@ -15,6 +15,7 @@ __all__ = [
     'InsideMenu',
 ]
 
+import inspect
 import socket
 import threading
 import weakref
@@ -26,9 +27,38 @@ from . import internal
 from . import math_engine_1
 from . import math_engine_2
 
+SOURCE = None
 
-# with open(sys.argv[0] if __name__ == '__main__' else __file__) as SOURCE:
-#     SOURCE = tuple(SOURCE.read().split('\n'))
+
+def build_source():
+    global SOURCE
+    if SOURCE is None:
+        import server.timeout
+        import server.handlers
+        # noinspection PyUnresolvedReferences
+        from . import external
+        from . import plugins
+        modules = (
+            server.complex_server,
+            server.structures,
+            server.timeout,
+            server.handlers,
+            common,
+            external,
+            internal,
+            math_engine_1,
+            math_engine_2,
+            plugins
+        )
+        source = []
+        for code in modules:
+            path = inspect.getsourcefile(code)
+            source.append(f'# {path}')
+            source.append(f'# {"=" * len(path)}')
+            with open(path, 'rt') as file:
+                source.extend(file.read().splitlines())
+        SOURCE = source
+
 
 class BanFilter(common.Handler):
     """BanFilter(client) -> BanFilter instance"""
@@ -174,15 +204,14 @@ class OutsideMenu(common.Handler):
                     return self.login_account(account, name)
         self.client.print('Authentication failed!')
 
-    # def do_open_source(self, args):
-    #     """Display the entire source code for this program."""
-    #     if args and args[0] == 'show':
-    #         show = True
-    #     else:
-    #         show = self.client.input('Are you sure?') in common.YES_WORDS
-    #     if show:
-    #         for line in SOURCE:
-    #             self.client.print(line)
+    def do_open_source(self, args):
+        """Display the entire source code for this program."""
+        if args and args[0] == 'force' or \
+                self.client.input('Are you sure?') in common.YES_WORDS:
+            build_source()
+            # noinspection PyTypeChecker
+            for line in SOURCE:
+                self.client.print(line)
 
     def do_register(self, args):
         """Register for an account using this command."""

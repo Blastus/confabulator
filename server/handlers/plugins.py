@@ -193,7 +193,7 @@ class MarkVShaney(MarkovChain):
                         good_end=False):
         """Generate some clauses that have a relationship with each other."""
         if attempts < 1:
-            raise ValueError('attempts must not be less than one0')
+            raise ValueError('attempts must not be less than one')
         for _ in range(attempts):
             iterator, paragraph, sentence = self.build_chain(), [], []
             while len(paragraph) < clauses:
