@@ -524,7 +524,7 @@ class ChannelServer(common.Handler):
             buffer = self.buffer[:]
         if buffer:
             size = (len(buffer) + 3) // 4
-            return plugins.MarkVShaney(self.client, buffer, size, self)
+            return plugins.MVSHandler(self.client, buffer, size, self)
         else:
             self.client.print('There is nothing to summarize.')
 
