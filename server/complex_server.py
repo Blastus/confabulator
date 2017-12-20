@@ -19,8 +19,10 @@ import socket
 import sys
 import threading
 import traceback
+import unittest.mock
 
 import server.handlers
+import server.handlers.internal
 import server.structures
 
 
@@ -33,21 +35,44 @@ def main(path):
     # Start The Chat Server
     server_thread = Server('', 8989)
     server_thread.start()
-    server_thread.join()
+    try:
+        interruptable_thread_join(server_thread)
+    except KeyboardInterrupt:
+        run_complete_shutdown(server_thread)
+        interruptable_thread_join(server_thread)
     # Wait On Connected Clients
+    current = threading.current_thread()
     while True:
-        current = threading.current_thread()
         # noinspection PyShadowingNames
         threads = tuple(filter(lambda thread: not (
             thread.daemon or thread is current), threading.enumerate()))
         if not threads:
             break
-        for thread in threads:
-            thread.join()
+        try:
+            for thread in threads:
+                interruptable_thread_join(thread)
+        except KeyboardInterrupt:
+            run_complete_shutdown(server_thread)
     # Save All Static Data
     server.handlers.InsideMenu.save(path)
     server.handlers.OutsideMenu.save(path)
     server.handlers.BanFilter.save(path)
+
+
+def interruptable_thread_join(thread):
+    """Try to join a thread every tenth of a second until it terminates."""
+    while thread.is_alive():
+        thread.join(0.1)
+
+
+def run_complete_shutdown(server_thread):
+    """Shutdown the server and force all of the clients to disconnect."""
+    print('Complete shutdown in progress ...')
+    client = unittest.mock.Mock()
+    client.name = 'KeyboardInterrupt'
+    client.server = server_thread
+    admin_console = server.handlers.internal.AdminConsole(client)
+    admin_console.do_shutdown(['all'])
 
 
 class Server(threading.Thread):
