@@ -123,12 +123,13 @@ class Client:
             raise SystemExit
         while self.SEPARATOR not in self.buffer:
             try:
-                self.buffer += self.socket.recv(self.RECEIVE_SIZE)
+                data = self.socket.recv(self.RECEIVE_SIZE)
             except socket.error:
                 self.close()
             else:
-                if len(self.buffer) > self.BUFF_SIZE:
+                if not data or len(self.buffer) + len(data) > self.BUFF_SIZE:
                     self.close()
+                self.buffer += data
         index = self.buffer.index(self.SEPARATOR) + len(self.SEPARATOR)
         self.buffer, text = self.buffer[index:], self.buffer[:index]
         return text
