@@ -19,7 +19,6 @@ import socket
 import sys
 import threading
 import traceback
-import unittest.mock
 
 import server.handlers
 import server.handlers.internal
@@ -68,9 +67,12 @@ def interruptable_thread_join(thread):
 def run_complete_shutdown(server_thread):
     """Shutdown the server and force all of the clients to disconnect."""
     print('Complete shutdown in progress ...')
-    client = unittest.mock.Mock()
-    client.name = 'KeyboardInterrupt'
-    client.server = server_thread
+    client = type('Client', (), dict(
+        name='KeyboardInterrupt',
+        server=server_thread,
+        print=lambda self, *value, sep=' ', end='\n': None,
+        close=lambda self, suppress_exit=False: None
+    ))()
     admin_console = server.handlers.internal.AdminConsole(client)
     admin_console.do_shutdown(['all'])
 
