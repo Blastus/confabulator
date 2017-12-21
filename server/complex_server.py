@@ -7,8 +7,8 @@ expression interpreters, asynchronous communications, and account options."""
 
 __author__ = 'Stephen "Zero" Chappell ' \
              '<stephen.paul.chappell@atlantis-zero.net>'
-__date__ = '18 December 2017'
-__version__ = 1, 0, 2
+__date__ = '21 December 2017'
+__version__ = 1, 0, 3
 __all__ = [
     'main',
     'Server'
@@ -20,6 +20,7 @@ import sys
 import threading
 import traceback
 
+import server.db_api
 import server.handlers
 import server.handlers.internal
 import server.structures
@@ -27,35 +28,36 @@ import server.structures
 
 def main(path):
     """Run a chat server using path as root for various files."""
-    # Load Static Handler Data
-    server.handlers.BanFilter.load(path)
-    server.handlers.OutsideMenu.load(path)
-    server.handlers.InsideMenu.load(path)
-    # Start The Chat Server
-    server_thread = Server('', 8989)
-    server_thread.start()
-    try:
-        interruptable_thread_join(server_thread)
-    except KeyboardInterrupt:
-        run_complete_shutdown(server_thread)
-        interruptable_thread_join(server_thread)
-    # Wait On Connected Clients
-    current = threading.current_thread()
-    while True:
-        # noinspection PyShadowingNames
-        threads = tuple(filter(lambda thread: not (
-            thread.daemon or thread is current), threading.enumerate()))
-        if not threads:
-            break
+    with server.db_api.DatabaseManager(path / 'confabulator.db') as database:
+        # Load Static Handler Data
+        # server.handlers.BanFilter.load(path)
+        server.handlers.OutsideMenu.load(path)
+        server.handlers.InsideMenu.load(path)
+        # Start The Chat Server
+        server_thread = Server('', 8989, database)
+        server_thread.start()
         try:
-            for thread in threads:
-                interruptable_thread_join(thread)
+            interruptable_thread_join(server_thread)
         except KeyboardInterrupt:
             run_complete_shutdown(server_thread)
-    # Save All Static Data
-    server.handlers.InsideMenu.save(path)
-    server.handlers.OutsideMenu.save(path)
-    server.handlers.BanFilter.save(path)
+            interruptable_thread_join(server_thread)
+        # Wait On Connected Clients
+        current = threading.current_thread()
+        while True:
+            # noinspection PyShadowingNames
+            threads = tuple(filter(lambda thread: not (
+                thread.daemon or thread is current), threading.enumerate()))
+            if not threads:
+                break
+            try:
+                for thread in threads:
+                    interruptable_thread_join(thread)
+            except KeyboardInterrupt:
+                run_complete_shutdown(server_thread)
+        # Save All Static Data
+        server.handlers.InsideMenu.save(path)
+        server.handlers.OutsideMenu.save(path)
+        # server.handlers.BanFilter.save(path)
 
 
 def interruptable_thread_join(thread):
@@ -80,13 +82,14 @@ def run_complete_shutdown(server_thread):
 class Server(threading.Thread):
     """Server(host, port) -> Server instance"""
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, database):
         """Initialize variables for creating server thread."""
         super().__init__()
         self.clients = []
         self.loop = True
         self.host = host
         self.port = port
+        self.database = database
         self.data_lock = threading.Lock()
 
     def run(self):
@@ -98,7 +101,7 @@ class Server(threading.Thread):
             connection, address = server_socket.accept()
             with self.data_lock:
                 if self.loop:
-                    client = Client(connection, address)
+                    client = Client(connection, address, self.database)
                     client.server = self
                     self.clients.append(client)
                     Stack(server.handlers.BanFilter(client)).start()
@@ -112,11 +115,12 @@ class Client:
     BUFF_SIZE = 1 << 16
     SEPARATOR = b'\r\n'
 
-    def __init__(self, connection, address):
+    def __init__(self, connection, address, database):
         """Initialize variables that make up a client instance."""
         self.closed = False
         self.socket = connection
         self.address = address
+        self.database = database
         self.buffer = bytes()
 
     def receive(self):
