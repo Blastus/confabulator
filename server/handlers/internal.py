@@ -7,13 +7,15 @@ be used elsewhere. That is why it is the only name that get exported."""
 
 __author__ = 'Stephen "Zero" Chappell ' \
              '<stephen.paul.chappell@atlantis-zero.net>'
-__date__ = '18 December 2017'
-__version__ = 1, 0, 0
+__date__ = '21 December 2017'
+__version__ = 1, 0, 1
 __all__ = [
     'enum'
 ]
 
+import ipaddress
 import socket
+import sqlite3
 import textwrap
 import threading
 
@@ -146,12 +148,16 @@ class AdminConsole(common.Handler):
         """Add an address to the list of those banned."""
         address = args[0] if args else self.client.input('Address:')
         if address:
-            address = address.casefold()
-            with external.BanFilter.data_lock:
-                if address in external.BanFilter.BLOCKED:
-                    self.client.print('Address in already in ban list.')
+            try:
+                ipaddress.IPv4Address(address)
+            except ipaddress.AddressValueError:
+                self.client.print('That does not look like a proper address.')
+            else:
+                try:
+                    self.client.database.ban_filter_add(address)
+                except sqlite3.IntegrityError:
+                    self.client.print('Address is already in ban list.')
                 else:
-                    external.BanFilter.BLOCKED.append(address)
                     self.client.print('Address has been successfully added.')
         else:
             self.client.print('Empty address may not be added.')
@@ -159,40 +165,34 @@ class AdminConsole(common.Handler):
     def ban_remove(self, args):
         """Remove an address from the list of those banned."""
         if args:
-            address = args[0].casefold()
-            with external.BanFilter.data_lock:
-                if address in external.BanFilter.BLOCKED:
-                    external.BanFilter.BLOCKED.remove(address)
-                else:
-                    self.client.print('Address not found.')
-                    return
+            address = args[0]
+            try:
+                ipaddress.IPv4Address(address)
+            except ipaddress.AddressValueError:
+                self.client.print('That does not look like a proper address.')
+            else:
+                self.client.database.ban_filter_remove(address)
+                self.client.print('Address is not in ban filter.')
         else:
-            with external.BanFilter.data_lock:
-                address_list = list(external.BanFilter.BLOCKED)
+            address_list = self.client.database.ban_filter_list()
             self.ban_view(address_list)
             if address_list:
-                # noinspection PyPep8,PyBroadException
                 try:
                     index = int(self.client.input('Item number?')) - 1
-                    assert 0 <= index < len(address_list)
-                except:
-                    self.client.print('You must enter a valid number.')
-                    return
-                else:
                     address = address_list[index]
-                    with external.BanFilter.data_lock:
-                        while address in external.BanFilter.BLOCKED:
-                            external.BanFilter.BLOCKED.remove(address)
-        self.client.print('Address has been removed.')
+                except (ValueError, IndexError):
+                    self.client.print('You must enter a valid number.')
+                else:
+                    self.client.database.ban_filter_remove(address)
+                    self.client.print('Address is not in ban filter.')
 
     def ban_view(self, address_list):
         """View list of addresses that are banned."""
         if address_list is None:
-            with external.BanFilter.data_lock:
-                address_list = list(external.BanFilter.BLOCKED)
+            address_list = self.client.database.ban_filter_list()
         if address_list:
-            for index, address in enumerate(address_list):
-                self.client.print(f'({index + 1}) {address}')
+            for index, address in enumerate(address_list, 1):
+                self.client.print(f'({index}) {address}')
         else:
             self.client.print('No one is in the ban list.')
 

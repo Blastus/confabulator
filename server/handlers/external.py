@@ -8,7 +8,7 @@ of the server interacts with these handlers directly for data persistence."""
 __author__ = 'Stephen "Zero" Chappell ' \
              '<stephen.paul.chappell@atlantis-zero.net>'
 __date__ = '21 December 2017'
-__version__ = 1, 0, 1
+__version__ = 1, 0, 2
 __all__ = [
     'BanFilter',
     'OutsideMenu',
@@ -31,9 +31,6 @@ from . import math_engine_2
 class BanFilter(common.Handler):
     """BanFilter(client) -> BanFilter instance"""
 
-    BLOCKED = []
-    data_lock = threading.Lock()
-
     def __init__(self, client):
         """Initialize filter with the client to screen."""
         super().__init__(client)
@@ -45,21 +42,18 @@ class BanFilter(common.Handler):
             self.client.print('Disconnecting ...')
             self.client.close()
             return
-        try:
-            host, alias, ip = socket.gethostbyaddr(self.client.address[0])
-        except socket.herror:
-            host, alias, ip = self.client.address[0], [], []
-        with self.data_lock:
-            if host.casefold() in self.BLOCKED:
-                self.client.close()
-            for name in alias:
-                if name.casefold() in self.BLOCKED:
-                    self.client.close()
-            for address in ip:
-                if address in self.BLOCKED:
-                    self.client.close()
+        ip_address = socket.gethostbyname(self.client.address[0])
+        print(ip_address)
+        if self.client.database.ban_filter_is_banned(ip_address):
+            self.client.close()
         self.passed = True
         return OutsideMenu(self.client)
+
+    @staticmethod
+    def ban_client(client):
+        """Conveniently ban a client using its connection to the database."""
+        ip_address = socket.gethostbyname(client.address[0])
+        client.database.ban_filter_add(ip_address)
 
 
 class OutsideMenu(common.Handler):
@@ -412,8 +406,7 @@ class InsideMenu(common.Handler):
         if not self.client.account.administrator:
             cls = type(self)
             if self.client.account.forgiven >= cls.MAX_FORGIVENESS:
-                with BanFilter.data_lock:
-                    BanFilter.BLOCKED.append(self.client.address[0])
+                BanFilter.ban_client(self.client)
                 OutsideMenu.delete_account(self.client.name)
                 self.client.print('You have been warned for the last time!')
                 self.client.print('Now your IP address has been blocked &')
