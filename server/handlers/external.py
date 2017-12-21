@@ -7,8 +7,8 @@ of the server interacts with these handlers directly for data persistence."""
 
 __author__ = 'Stephen "Zero" Chappell ' \
              '<stephen.paul.chappell@atlantis-zero.net>'
-__date__ = '18 December 2017'
-__version__ = 1, 0, 0
+__date__ = '21 December 2017'
+__version__ = 1, 0, 1
 __all__ = [
     'BanFilter',
     'OutsideMenu',
@@ -26,38 +26,6 @@ from . import common
 from . import internal
 from . import math_engine_1
 from . import math_engine_2
-
-SOURCE = None
-
-
-def build_source():
-    global SOURCE
-    if SOURCE is None:
-        import server.timeout
-        import server.handlers
-        # noinspection PyUnresolvedReferences
-        from . import external
-        from . import plugins
-        modules = (
-            server.complex_server,
-            server.structures,
-            server.timeout,
-            server.handlers,
-            common,
-            external,
-            internal,
-            math_engine_1,
-            math_engine_2,
-            plugins
-        )
-        source = []
-        for code in modules:
-            path = inspect.getsourcefile(code)
-            source.append(f'# {path}')
-            source.append(f'# {"=" * len(path)}')
-            with open(path, 'rt') as file:
-                source.extend(file.read().splitlines())
-        SOURCE = source
 
 
 class BanFilter(common.Handler):
@@ -99,6 +67,7 @@ class OutsideMenu(common.Handler):
 
     ACCOUNTS = {}
     data_lock = threading.Lock()
+    server_code = None
 
     @classmethod
     def account_exists(cls, name):
@@ -208,10 +177,37 @@ class OutsideMenu(common.Handler):
         """Display the entire source code for this program."""
         if args and args[0] == 'force' or \
                 self.client.input('Are you sure?') in common.YES_WORDS:
-            build_source()
-            # noinspection PyTypeChecker
-            for line in SOURCE:
+            self.prepare_server_code()
+            for line in self.server_code:
                 self.client.print(line)
+
+    @classmethod
+    def prepare_server_code(cls):
+        """Fills a static variable with the project's complete source code."""
+        if cls.server_code is None:
+            import server.timeout
+            import server.handlers
+            # noinspection PyUnresolvedReferences
+            from . import external
+            from . import plugins
+            source = []
+            for code in (
+                server.complex_server,
+                server.structures,
+                server.timeout,
+                server.handlers,
+                common,
+                external,
+                internal,
+                math_engine_1,
+                math_engine_2,
+                plugins
+            ):
+                path = inspect.getsourcefile(code)
+                source.extend((f'# {"=" * len(path)}', f'# {path}'))
+                with open(path, 'rt') as file:
+                    source.extend(file.read().splitlines())
+            cls.server_code = tuple(source)
 
     def do_register(self, args):
         """Register for an account using this command."""
