@@ -1,5 +1,5 @@
 -- Created by Vertabelo (http://vertabelo.com)
--- Last modification date: 2017-12-21 21:22:12.024
+-- Last modification date: 2017-12-22 18:21:44.379
 
 -- tables
 -- Table: blocked_client
@@ -102,10 +102,12 @@ CREATE TABLE privilege_relationship (
     privilege_relationship_id integer NOT NULL CONSTRAINT privilege_relationship_pk PRIMARY KEY AUTOINCREMENT,
     parent_id integer NOT NULL,
     child_id integer NOT NULL,
+    CONSTRAINT privilege_relationship_parent_child UNIQUE (parent_id, child_id),
     CONSTRAINT privilege_relationship_parent_id FOREIGN KEY (parent_id)
     REFERENCES privilege_group (privilege_group_id),
     CONSTRAINT privilege_relationship_child_id FOREIGN KEY (child_id)
-    REFERENCES privilege_group (privilege_group_id)
+    REFERENCES privilege_group (privilege_group_id),
+    CONSTRAINT privilege_relationship_check CHECK (parent_id != child_id)
 );
 
 -- Table: user_account

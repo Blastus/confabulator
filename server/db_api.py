@@ -7,8 +7,8 @@ code shown below is to switch data persistence to rely on sqlite3 instead."""
 
 __author__ = 'Stephen "Zero" Chappell ' \
              '<stephen.paul.chappell@atlantis-zero.net>'
-__date__ = '21 December 2017'
-__version__ = 1, 0, 0
+__date__ = '22 December 2017'
+__version__ = 1, 0, 1
 __all__ = [
     'DatabaseManager'
 ]
@@ -27,6 +27,8 @@ class DatabaseManager:
         """Initialize the database and run the startup script if needed."""
         prime = not path.exists()
         self.__connection = sqlite3.connect(str(path), check_same_thread=False)
+        with self.__cursor as cursor:
+            cursor.execute('PRAGMA foreign_keys = ON')
         self.__connection.row_factory = sqlite3.Row
         self.__writing_lock = threading.Lock()
         if prime:
@@ -52,7 +54,164 @@ class DatabaseManager:
                 open('Confabulator_Database_create.sql', 'rt') as file, \
                 self.__writing_lock:
             cursor.executescript(file.read())
-        self.global_setting['IM mercy limit'] = 2
+        # Populate the database with values the script does not create.
+        self.global_setting['InsideMenu.mercy_limit'] = 2
+        self.__create_privilege_groups()
+        self.__create_privilege_relationships()
+
+    def __create_privilege_groups(self):
+        """Create all the privilege groups needed for user accounts."""
+        # Individual Table CRUD
+        self.privilege_group_create('MutedUser.create')
+        self.privilege_group_create('MutedUser.read')
+        self.privilege_group_create('MutedUser.update')
+        self.privilege_group_create('MutedUser.delete')
+        self.privilege_group_create('ChannelBan.create')
+        self.privilege_group_create('ChannelBan.read')
+        self.privilege_group_create('ChannelBan.update')
+        self.privilege_group_create('ChannelBan.delete')
+        self.privilege_group_create('CommunicationChannel.create')
+        self.privilege_group_create('CommunicationChannel.read')
+        self.privilege_group_create('CommunicationChannel.update')
+        self.privilege_group_create('CommunicationChannel.delete')
+        self.privilege_group_create('InboxMessage.create')
+        self.privilege_group_create('InboxMessage.read')
+        self.privilege_group_create('InboxMessage.update')
+        self.privilege_group_create('InboxMessage.delete')
+        self.privilege_group_create('ChannelMessage.create')
+        self.privilege_group_create('ChannelMessage.read')
+        self.privilege_group_create('ChannelMessage.update')
+        self.privilege_group_create('ChannelMessage.delete')
+        self.privilege_group_create('UserContact.create')
+        self.privilege_group_create('UserContact.read')
+        self.privilege_group_create('UserContact.update')
+        self.privilege_group_create('UserContact.delete')
+        # Composite CRUD Privileges
+        self.privilege_group_create('CREATE_ALL')
+        self.privilege_group_create('READ_ALL')
+        self.privilege_group_create('UPDATE_ALL')
+        self.privilege_group_create('DELETE_ALL')
+        self.privilege_group_create('FULL_CRUD')
+        # Primary Account Privileges
+        self.privilege_group_create('USER')
+        self.privilege_group_create('ADMINISTRATOR')
+        # Extra Administrator Permissions
+        self.privilege_group_create('AdminConsole.open')
+        self.privilege_group_create('ChannelAdmin.open')
+        self.privilege_group_create('ChannelServer.open')
+        self.privilege_group_create('ALL_ADMIN_POWER')
+
+    def __create_privilege_relationships(self):
+        """Build the hierarchy needed to support advanced permissions."""
+        # All Creating Permissions
+        self.privilege_relationship_create(
+            'MutedUser.create', 'CREATE_ALL'
+        )
+        self.privilege_relationship_create(
+            'ChannelBan.create', 'CREATE_ALL'
+        )
+        self.privilege_relationship_create(
+            'CommunicationChannel.create', 'CREATE_ALL'
+        )
+        self.privilege_relationship_create(
+            'InboxMessage.create', 'CREATE_ALL'
+        )
+        self.privilege_relationship_create(
+            'ChannelMessage.create', 'CREATE_ALL'
+        )
+        self.privilege_relationship_create(
+            'UserContact.create', 'CREATE_ALL'
+        )
+        # All Reading Permissions
+        self.privilege_relationship_create(
+            'MutedUser.read', 'READ_ALL'
+        )
+        self.privilege_relationship_create(
+            'ChannelBan.read', 'READ_ALL'
+        )
+        self.privilege_relationship_create(
+            'CommunicationChannel.read', 'READ_ALL'
+        )
+        self.privilege_relationship_create(
+            'InboxMessage.read', 'READ_ALL'
+        )
+        self.privilege_relationship_create(
+            'ChannelMessage.read', 'READ_ALL'
+        )
+        self.privilege_relationship_create(
+            'UserContact.read', 'READ_ALL'
+        )
+        # All Updating Permissions
+        self.privilege_relationship_create(
+            'MutedUser.update', 'UPDATE_ALL'
+        )
+        self.privilege_relationship_create(
+            'ChannelBan.update', 'UPDATE_ALL'
+        )
+        self.privilege_relationship_create(
+            'CommunicationChannel.update', 'UPDATE_ALL'
+        )
+        self.privilege_relationship_create(
+            'InboxMessage.update', 'UPDATE_ALL'
+        )
+        self.privilege_relationship_create(
+            'ChannelMessage.update', 'UPDATE_ALL'
+        )
+        self.privilege_relationship_create(
+            'UserContact.update', 'UPDATE_ALL'
+        )
+        # All Deleting Permissions
+        self.privilege_relationship_create(
+            'MutedUser.delete', 'DELETE_ALL'
+        )
+        self.privilege_relationship_create(
+            'ChannelBan.delete', 'DELETE_ALL'
+        )
+        self.privilege_relationship_create(
+            'CommunicationChannel.delete', 'DELETE_ALL'
+        )
+        self.privilege_relationship_create(
+            'InboxMessage.delete', 'DELETE_ALL'
+        )
+        self.privilege_relationship_create(
+            'ChannelMessage.delete', 'DELETE_ALL'
+        )
+        self.privilege_relationship_create(
+            'UserContact.delete', 'DELETE_ALL'
+        )
+        # All CRUD Permissions
+        self.privilege_relationship_create(
+            'CREATE_ALL', 'FULL_CRUD'
+        )
+        self.privilege_relationship_create(
+            'READ_ALL', 'FULL_CRUD'
+        )
+        self.privilege_relationship_create(
+            'UPDATE_ALL', 'FULL_CRUD'
+        )
+        self.privilege_relationship_create(
+            'DELETE_ALL', 'FULL_CRUD'
+        )
+        # All Account Permissions
+        self.privilege_relationship_create(
+            'FULL_CRUD', 'USER'
+        )
+        # Additional Administrator Privileges
+        self.privilege_relationship_create(
+            'FULL_CRUD', 'ADMINISTRATOR'
+        )
+        self.privilege_relationship_create(
+            'AdminConsole.open', 'ALL_ADMIN_POWER'
+        )
+        self.privilege_relationship_create(
+            'ChannelAdmin.open', 'ALL_ADMIN_POWER'
+        )
+        self.privilege_relationship_create(
+            'ChannelServer.open', 'ALL_ADMIN_POWER'
+        )
+        self.privilege_relationship_create(
+            'ALL_ADMIN_POWER', 'ADMINISTRATOR'
+        )
 
     def ban_filter_is_banned(self, ip_address):
         """Check if the IP address is considered banned or not."""
@@ -92,6 +251,59 @@ ORDER BY blocked_client_id''')
     def global_setting(self):
         """Property that allows access to the global_setting table."""
         return GlobalSetting(self.__cursor, self.__writing_lock)
+
+    def privilege_group_create(self, name):
+        """Allows creation of a privilege group if it does not exist."""
+        with self.__cursor as cursor, self.__writing_lock:
+            cursor.execute('''\
+INSERT INTO privilege_group (name)
+     VALUES (:name)''', dict(name=name))
+
+    def privilege_group_delete(self, name):
+        """Allows the deletion of a privilege group not in a relationship."""
+        with self.__cursor as cursor, self.__writing_lock:
+            cursor.execute('''\
+DELETE FROM privilege_group
+      WHERE name = :name''', dict(name=name))
+
+    def privilege_group_get_id(self, name):
+        """Allows retrieval of the primary key for a privilege group."""
+        with self.__cursor as cursor:
+            cursor.execute('''\
+SELECT privilege_group_id
+  FROM privilege_group
+ WHERE name = :name''', dict(name=name))
+            return cursor.fetchone()['privilege_group_id']
+
+    def privilege_relationship_create(self, parent, child):
+        """Allows a privilege relationship to be created."""
+        with self.__cursor as cursor, self.__writing_lock:
+            cursor.execute('''\
+INSERT INTO privilege_relationship (parent_id, child_id)
+     VALUES (
+    (SELECT privilege_group_id
+       FROM privilege_group
+      WHERE name = :parent),
+    (SELECT privilege_group_id
+       FROM privilege_group
+      WHERE name = :child))''', dict(parent=parent, child=child))
+
+    def privilege_relationship_delete(self, parent, child):
+        """Allows a privilege relationship to be deleted."""
+        with self.__cursor as cursor, self.__writing_lock:
+            cursor.execute('''\
+DELETE FROM privilege_relationship
+      WHERE parent_id = (
+     SELECT privilege_group_id
+       FROM privilege_group
+      WHERE name = :parent)
+        AND child_id = (
+     SELECT privilege_group_id
+       FROM privilege_group
+      WHERE name = :child)''', dict(parent=parent, child=child))
+
+    # TODO https://stackoverflow.com/q/47947581/216356
+    # TODO https://stackoverflow.com/q/47947815/216356
 
 
 class GlobalSetting:
