@@ -309,8 +309,6 @@ class OutsideMenu(common.Handler):
 class InsideMenu(common.Handler):
     """InsideMenu(client) -> InsideMenu instance"""
 
-    MAX_FORGIVENESS = 2
-
     data_lock = threading.Lock()
     NEXT_CHANNEL = 1
     CHANNEL_NAMES = {}
@@ -403,20 +401,22 @@ class InsideMenu(common.Handler):
     # noinspection PyUnusedLocal
     def do_admin(self, args):
         """Access the administration console (if you are an administrator)."""
-        if not self.client.account.administrator:
+        client = self.client
+        if not client.account.administrator:
             cls = type(self)
-            if self.client.account.forgiven >= cls.MAX_FORGIVENESS:
-                BanFilter.ban_client(self.client)
-                OutsideMenu.delete_account(self.client.name)
-                self.client.print('You have been warned for the last time!')
-                self.client.print('Now your IP address has been blocked &')
-                self.client.print('your account has been completely removed.')
-                self.client.close()
-            with self.client.account.data_lock:
-                self.client.account.forgiven += 1
-            self.client.print('You are not authorized to be here.')
+            mercy_limit = client.database.global_setting['IM mercy limit']
+            if client.account.forgiven >= mercy_limit:
+                BanFilter.ban_client(client)
+                OutsideMenu.delete_account(client.name)
+                client.print('You have been warned for the last time!')
+                client.print('Now your IP address has been blocked &')
+                client.print('your account has been completely removed.')
+                client.close()
+            with client.account.data_lock:
+                client.account.forgiven += 1
+            client.print('You are not authorized to be here.')
             return EOFError()
-        return internal.AdminConsole(self.client)
+        return internal.AdminConsole(client)
 
     def do_channel(self, args):
         """Allows you create and connect to message channels."""

@@ -15,6 +15,7 @@ __all__ = [
 
 import contextlib
 import operator
+import pickle
 import sqlite3
 import threading
 
@@ -39,7 +40,7 @@ class DatabaseManager:
         """Finish all database processing and pass all errors through."""
         self.__connection.commit()
         self.__connection.close()
-        
+
     @property
     def __cursor(self):
         """Property that simplifies accessing database cursors."""
@@ -51,6 +52,7 @@ class DatabaseManager:
                 open('Confabulator_Database_create.sql', 'rt') as file, \
                 self.__writing_lock:
             cursor.executescript(file.read())
+        self.global_setting['IM mercy limit'] = 2
 
     def ban_filter_is_banned(self, ip_address):
         """Check if the IP address is considered banned or not."""
@@ -85,3 +87,42 @@ ORDER BY blocked_client_id''')
             return tuple(map(
                 operator.itemgetter('ip_address'), cursor.fetchall()
             ))
+
+    @property
+    def global_setting(self):
+        """Property that allows access to the global_setting table."""
+        return GlobalSetting(self.__cursor, self.__writing_lock)
+
+
+class GlobalSetting:
+    """GlobalSetting(cursor, writing_lock) -> GlobalSetting instance"""
+
+    def __init__(self, cursor, writing_lock):
+        """Initialize a one-time-use accessor and mutator for settings."""
+        self.__cursor = cursor
+        self.__writing_lock = writing_lock
+
+    def __getitem__(self, key):
+        """Get an arbitrary object out of the global setting system."""
+        with self.__cursor as cursor:
+            cursor.execute('''\
+SELECT value
+  FROM global_setting
+ WHERE "key" = :key''', dict(key=key))
+            return pickle.loads(cursor.fetchone()['value'])
+
+    def __setitem__(self, key, value):
+        """Assign an arbitrary object to a specific string key in settings."""
+        with self.__cursor as cursor, self.__writing_lock:
+            cursor.execute('''\
+INSERT OR REPLACE INTO global_setting ("key", value)
+                VALUES (:key, :value)''', dict(
+                key=key, value=pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
+            ))
+
+    def __delitem__(self, key):
+        """Delete the specified key/value pair from global settings."""
+        with self.__cursor as cursor, self.__writing_lock:
+            cursor.execute('''\
+DELETE FROM global_setting
+      WHERE "key" = :key''', dict(key='test'))
