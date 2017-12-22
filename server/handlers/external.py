@@ -43,7 +43,6 @@ class BanFilter(common.Handler):
             self.client.close()
             return
         ip_address = socket.gethostbyname(self.client.address[0])
-        print(ip_address)
         if self.client.database.ban_filter_is_banned(ip_address):
             self.client.close()
         self.passed = True
@@ -404,7 +403,8 @@ class InsideMenu(common.Handler):
         client = self.client
         if not client.account.administrator:
             cls = type(self)
-            mercy_limit = client.database.global_setting['IM mercy limit']
+            key = 'InsideMenu.mercy_limit'
+            mercy_limit = client.database.global_setting[key]
             if client.account.forgiven >= mercy_limit:
                 BanFilter.ban_client(client)
                 OutsideMenu.delete_account(client.name)
