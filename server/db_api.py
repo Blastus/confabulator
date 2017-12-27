@@ -8,16 +8,19 @@ code shown below is to switch data persistence to rely on sqlite3 instead."""
 __author__ = 'Stephen "Zero" Chappell ' \
              '<stephen.paul.chappell@atlantis-zero.net>'
 __date__ = '27 December 2017'
-__version__ = 1, 0, 2
+__version__ = 1, 0, 3
 __all__ = [
     'DatabaseManager'
 ]
 
 import contextlib
+import hashlib
 import operator
 import pickle
+import random
 import sqlite3
 import threading
+import uuid
 
 
 class DatabaseManager:
@@ -56,6 +59,7 @@ class DatabaseManager:
             cursor.executescript(file.read())
         # Populate the database with values the script does not create.
         self.global_setting['InsideMenu.mercy_limit'] = 2
+        self.global_setting['Application.name'] = 'Confabulator'
         self.__create_privilege_groups()
         self.__create_privilege_relationships()
 
@@ -326,6 +330,57 @@ WITH RECURSIVE parent_of_child(id)
             return bool(cursor.fetchone())
 
     # TODO https://stackoverflow.com/q/47947581/216356
+
+    def user_account_create(self, name, online, password, forgiven):
+        """Creates new user with right privileges, and returns account ID."""
+        password_salt = uuid.uuid4().bytes
+        password_hash = self.__hash_password(password, password_salt)
+        with self.__cursor as cursor:
+            with self.__writing_lock:
+                # With Writing Lock
+                cursor.execute('''\
+INSERT INTO user_account (
+            name,
+            online,
+            password_salt,
+            password_hash,
+            forgiven,
+            privilege_group_id)
+     VALUES (
+            :name,
+            :online,
+            :password_salt,
+            :password_hash,
+            :forgiven,
+    (SELECT privilege_group_id
+       FROM privilege_group
+      WHERE name = CASE (
+     SELECT count(*)
+       FROM user_account)
+       WHEN 0 THEN 'ADMINISTRATOR'
+              ELSE 'USER' END))''', dict(
+                    name=name,
+                    online=online,
+                    password_salt=password_salt,
+                    password_hash=password_hash,
+                    forgiven=forgiven
+                ))
+            # Without Writing Lock
+            cursor.execute('''\
+SELECT user_account_id
+  FROM user_account
+ WHERE name = :name''', dict(name=name))
+            return cursor.fetchone()['user_account_id']
+
+    def __hash_password(self, password, salt, encoding='latin_1'):
+        """Creates a hash for a password in a slightly random process."""
+        items_to_hash = [
+            password.encode(encoding),
+            salt,
+            self.global_setting['Application.name'].encode(encoding)
+        ]
+        random.SystemRandom().shuffle(items_to_hash)
+        return hashlib.sha512(b''.join(items_to_hash)).digest()
 
 
 class GlobalSetting:
