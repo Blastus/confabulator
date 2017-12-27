@@ -1,5 +1,5 @@
 -- Created by Vertabelo (http://vertabelo.com)
--- Last modification date: 2017-12-22 18:21:44.379
+-- Last modification date: 2017-12-27 18:45:16.222
 
 -- tables
 -- Table: blocked_client
@@ -115,6 +115,7 @@ CREATE TABLE user_account (
     user_account_id integer NOT NULL CONSTRAINT user_account_pk PRIMARY KEY AUTOINCREMENT,
     name text NOT NULL,
     online numeric NOT NULL,
+    password_salt blob NOT NULL,
     password_hash blob NOT NULL,
     forgiven integer NOT NULL,
     privilege_group_id integer NOT NULL,
