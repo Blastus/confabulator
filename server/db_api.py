@@ -8,7 +8,7 @@ code shown below is to switch data persistence to rely on sqlite3 instead."""
 __author__ = 'Stephen "Zero" Chappell ' \
              '<stephen.paul.chappell@atlantis-zero.net>'
 __date__ = '27 December 2017'
-__version__ = 1, 0, 3
+__version__ = 1, 0, 4
 __all__ = [
     'DatabaseManager'
 ]
@@ -381,6 +381,24 @@ SELECT user_account_id
         ]
         random.SystemRandom().shuffle(items_to_hash)
         return hashlib.sha512(b''.join(items_to_hash)).digest()
+
+    def user_contact_get_contact_counts(self, owner_id):
+        """Find out how many contacts are online for the given user."""
+        with self.__cursor as cursor:
+            cursor.execute('''\
+SELECT (
+SELECT count(*)
+  FROM user_contact
+ WHERE owner_id = :owner_id) AS all_contacts, (
+SELECT count(*)
+  FROM user_contact
+  JOIN user_account
+    ON user_contact.friend_id = user_account.user_account_id
+ WHERE user_contact.owner_id = :owner_id
+   AND user_account.online = :python_true) AS online_contacts''', dict(
+                owner_id=owner_id, python_true=True
+            ))
+            return dict(cursor.fetchone())
 
 
 class GlobalSetting:
