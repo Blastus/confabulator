@@ -381,6 +381,8 @@ class InsideMenu(common.Handler):
             ))
             contacts = list(self.client.account.contacts)
         self.client.print(f'You have {new} new message{("s", "")[new == 1]}.')
+        # TODO: The rest of this method needs to be replaced with a call to
+        #       db_api.DatabaseManager.user_contact_get_contact_counts
         online = 0
         with OutsideMenu.data_lock:
             for name in contacts:
