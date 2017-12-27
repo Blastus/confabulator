@@ -7,8 +7,8 @@ code shown below is to switch data persistence to rely on sqlite3 instead."""
 
 __author__ = 'Stephen "Zero" Chappell ' \
              '<stephen.paul.chappell@atlantis-zero.net>'
-__date__ = '22 December 2017'
-__version__ = 1, 0, 1
+__date__ = '27 December 2017'
+__version__ = 1, 0, 2
 __all__ = [
     'DatabaseManager'
 ]
@@ -302,8 +302,30 @@ DELETE FROM privilege_relationship
        FROM privilege_group
       WHERE name = :child)''', dict(parent=parent, child=child))
 
+    def privilege_relationship_child_has_parent(self, child, parent):
+        """Checks if a child is the descendant of a particular parent."""
+        with self.__cursor as cursor:
+            # Reference: https://stackoverflow.com/q/47947815/216356
+            cursor.execute('''\
+WITH RECURSIVE parent_of_child(id)
+            AS (
+        SELECT privilege_group_id
+          FROM privilege_group
+         WHERE name = :child
+         UNION
+        SELECT parent_id
+          FROM privilege_relationship
+          JOIN parent_of_child
+            ON id = child_id)
+        SELECT id
+          FROM parent_of_child
+         WHERE id = (
+        SELECT privilege_group_id
+          FROM privilege_group
+         WHERE name = :parent)''', dict(child=child, parent=parent))
+            return bool(cursor.fetchone())
+
     # TODO https://stackoverflow.com/q/47947581/216356
-    # TODO https://stackoverflow.com/q/47947815/216356
 
 
 class GlobalSetting:
