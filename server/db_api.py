@@ -7,8 +7,8 @@ code shown below is to switch data persistence to rely on sqlite3 instead."""
 
 __author__ = 'Stephen "Zero" Chappell ' \
              '<stephen.paul.chappell@atlantis-zero.net>'
-__date__ = '27 December 2017'
-__version__ = 1, 0, 4
+__date__ = '28 December 2017'
+__version__ = 1, 0, 5
 __all__ = [
     'DatabaseManager'
 ]
@@ -17,7 +17,6 @@ import contextlib
 import hashlib
 import operator
 import pickle
-import random
 import sqlite3
 import threading
 import uuid
@@ -59,7 +58,6 @@ class DatabaseManager:
             cursor.executescript(file.read())
         # Populate the database with values the script does not create.
         self.global_setting['InsideMenu.mercy_limit'] = 2
-        self.global_setting['Application.name'] = 'Confabulator'
         self.__create_privilege_groups()
         self.__create_privilege_relationships()
 
@@ -334,7 +332,8 @@ WITH RECURSIVE parent_of_child(id)
     def user_account_create(self, name, online, password, forgiven):
         """Creates new user with right privileges, and returns account ID."""
         password_salt = uuid.uuid4().bytes
-        password_hash = self.__hash_password(password, password_salt)
+        composite_value = password_salt + password.encode()
+        password_hash = hashlib.sha512(composite_value).digest()
         with self.__cursor as cursor:
             with self.__writing_lock:
                 # With Writing Lock
@@ -371,16 +370,6 @@ SELECT user_account_id
   FROM user_account
  WHERE name = :name''', dict(name=name))
             return cursor.fetchone()['user_account_id']
-
-    def __hash_password(self, password, salt, encoding='latin_1'):
-        """Creates a hash for a password in a slightly random process."""
-        items_to_hash = [
-            password.encode(encoding),
-            salt,
-            self.global_setting['Application.name'].encode(encoding)
-        ]
-        random.SystemRandom().shuffle(items_to_hash)
-        return hashlib.sha512(b''.join(items_to_hash)).digest()
 
     def user_contact_get_contact_counts(self, owner_id):
         """Find out how many contacts are online for the given user."""
