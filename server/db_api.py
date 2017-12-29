@@ -16,10 +16,10 @@ __all__ = [
 import contextlib
 import hashlib
 import operator
+import os
 import pickle
 import sqlite3
 import threading
-import uuid
 
 
 class DatabaseManager:
@@ -331,9 +331,13 @@ WITH RECURSIVE parent_of_child(id)
 
     def user_account_create(self, name, online, password, forgiven):
         """Creates new user with right privileges, and returns account ID."""
-        password_salt = uuid.uuid4().bytes
-        composite_value = password_salt + password.encode()
-        password_hash = hashlib.sha512(composite_value).digest()
+        password_salt = os.urandom(1 << 10)
+        password_hash = hashlib.pbkdf2_hmac(
+            'sha512',
+            password.encode(),
+            password_salt,
+            10 ** 5
+        )
         with self.__cursor as cursor:
             with self.__writing_lock:
                 # With Writing Lock
