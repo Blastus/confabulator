@@ -1,5 +1,5 @@
 -- Created by Vertabelo (http://vertabelo.com)
--- Last modification date: 2017-12-27 18:45:16.222
+-- Last modification date: 2018-01-09 19:48:22.891
 
 -- tables
 -- Table: blocked_client
@@ -14,6 +14,7 @@ CREATE TABLE channel_ban (
     channel_ban_id integer NOT NULL CONSTRAINT channel_ban_pk PRIMARY KEY AUTOINCREMENT,
     communication_channel_id integer NOT NULL,
     user_account_id integer NOT NULL,
+    CONSTRAINT channel_ban_cc_ua UNIQUE (communication_channel_id, user_account_id),
     CONSTRAINT channel_ban_communication_channel_id FOREIGN KEY (communication_channel_id)
     REFERENCES communication_channel (communication_channel_id),
     CONSTRAINT channel_ban_user_account_id FOREIGN KEY (user_account_id)
@@ -25,6 +26,7 @@ CREATE TABLE channel_message (
     channel_message_id integer NOT NULL CONSTRAINT channel_message_pk PRIMARY KEY AUTOINCREMENT,
     communication_channel_id integer NOT NULL,
     user_account_id integer NOT NULL,
+    message_text text NOT NULL,
     CONSTRAINT channel_message_communication_channel_id FOREIGN KEY (communication_channel_id)
     REFERENCES communication_channel (communication_channel_id),
     CONSTRAINT channel_message_user_account_id FOREIGN KEY (user_account_id)
@@ -82,12 +84,14 @@ CREATE TABLE muted_user (
     communication_channel_id integer NOT NULL,
     owner_id integer NOT NULL,
     muted_id integer NOT NULL,
+    CONSTRAINT muted_user_cc_owner_muted UNIQUE (communication_channel_id, owner_id, muted_id),
     CONSTRAINT muted_user_communication_channel_id FOREIGN KEY (communication_channel_id)
     REFERENCES communication_channel (communication_channel_id),
     CONSTRAINT muted_user_owner_id FOREIGN KEY (owner_id)
     REFERENCES user_account (user_account_id),
     CONSTRAINT muted_user_muted_id FOREIGN KEY (muted_id)
-    REFERENCES user_account (user_account_id)
+    REFERENCES user_account (user_account_id),
+    CONSTRAINT muted_user_check CHECK (owner_id != muted_id)
 );
 
 -- Table: privilege_group
@@ -129,10 +133,12 @@ CREATE TABLE user_contact (
     user_contact_id integer NOT NULL CONSTRAINT user_contact_pk PRIMARY KEY AUTOINCREMENT,
     owner_id integer NOT NULL,
     friend_id integer NOT NULL,
+    CONSTRAINT user_contact_owner_friend UNIQUE (owner_id, friend_id),
     CONSTRAINT user_contact_owner_id FOREIGN KEY (owner_id)
     REFERENCES user_account (user_account_id),
     CONSTRAINT user_contact_friend_id FOREIGN KEY (friend_id)
-    REFERENCES user_account (user_account_id)
+    REFERENCES user_account (user_account_id),
+    CONSTRAINT user_contact_check CHECK (owner_id != friend_id)
 );
 
 -- End of file.
