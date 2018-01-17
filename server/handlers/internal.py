@@ -201,7 +201,7 @@ class AdminConsole(common.Handler):
         with external.OutsideMenu.data_lock:
             accounts = list(external.OutsideMenu.ACCOUNTS.values())
         for account in accounts:
-            if account is not self.client.account:
+            if account is not getattr(self.client, 'account', None):
                 if level > self.shutdown.users or not account.administrator:
                     account.broadcast(message)
                     account.force_disconnect()
