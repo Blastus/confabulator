@@ -1,8 +1,12 @@
 #! /usr/bin/env python3
+import pathlib
 import socket
 import sys
 from tkinter.constants import *
 
+sys.path.append(str(pathlib.PurePath(sys.argv[0]).parents[1]))
+
+# noinspection PyPep8
 from client.safe_tkinter import *
 
 

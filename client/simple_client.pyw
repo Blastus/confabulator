@@ -25,6 +25,9 @@ import traceback
 from tkinter.constants import *
 from tkinter.messagebox import WARNING, OK
 
+sys.path.append(str(pathlib.PurePath(sys.argv[0]).parents[1]))
+
+# noinspection PyPep8
 from client.safe_tkinter import *
 
 

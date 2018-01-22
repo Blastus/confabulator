@@ -1,5 +1,5 @@
 -- Created by Vertabelo (http://vertabelo.com)
--- Last modification date: 2018-01-09 19:48:22.891
+-- Last modification date: 2018-01-22 15:05:18.571
 
 -- tables
 -- Table: blocked_client
@@ -45,6 +45,7 @@ CREATE TABLE communication_channel (
     communication_channel_id integer NOT NULL CONSTRAINT communication_channel_pk PRIMARY KEY AUTOINCREMENT,
     name text NOT NULL,
     user_account_id integer NOT NULL,
+    password_salt blob,
     password_hash blob,
     buffer_size integer NOT NULL,
     replay_size integer NOT NULL,

@@ -20,9 +20,15 @@ import sys
 import threading
 import traceback
 
+sys.path.append(str(pathlib.PurePath(sys.argv[0]).parents[1]))
+
+# noinspection PyPep8
 import server.db_api
+# noinspection PyPep8
 import server.handlers
+# noinspection PyPep8
 import server.handlers.internal
+# noinspection PyPep8
 import server.structures
 
 
